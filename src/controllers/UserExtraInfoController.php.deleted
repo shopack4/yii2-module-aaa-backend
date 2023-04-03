@@ -1,0 +1,169 @@
+<?php
+/**
+ * @author Kambiz Zandi <kambizzandi@gmail.com>
+ */
+
+namespace shopack\aaa\backend\controllers;
+
+use Yii;
+use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
+use shopack\base\backend\controller\BaseRestController;
+use shopack\base\backend\helpers\PrivHelper;
+use shopack\aaa\backend\models\UserExtraInfoModel;
+use yii\data\ActiveDataProvider;
+
+class UserExtraInfoController extends BaseRestController
+{
+	public function behaviors()
+	{
+		$behaviors = parent::behaviors();
+		return $behaviors;
+	}
+
+	protected function findModel($id)
+	{
+		if (($model = UserExtraInfoModel::findOne($id)) !== null)
+			return $model;
+
+		throw new NotFoundHttpException('The requested item not exist.');
+	}
+
+	public function actionIndex()
+	{
+		$filter = [];
+		if (PrivHelper::hasPriv('aaa/user/crud', '0100') == false)
+			$filter = ['uexUserID' => Yii::$app->user->identity->usrID];
+
+		$searchModel = new UserExtraInfoModel;
+		$query = $searchModel::find()
+			// ->select(UserExtraInfoModel::selectableColumns())
+			->asArray()
+		;
+
+		$searchModel->fillQueryFromRequest($query);
+
+		if (empty($filter) == false)
+			$query->andWhere($filter);
+
+		// if ($pageSize > 0) {
+		// 	$query
+		// 		->offset($pageIndex * $pageSize)
+		// 		->limit($pageSize)
+		// 	;
+		// }
+
+		$dataProvider = new ActiveDataProvider([
+			'query' => $query,
+		]);
+
+		if (Yii::$app->request->getMethod() == 'HEAD') {
+			$totalCount = $dataProvider->getTotalCount();
+			// $totalCount = $query->count();
+			Yii::$app->response->headers->add('X-Pagination-Total-Count', $totalCount);
+			return [];
+		}
+
+		return [
+			'data' => $dataProvider->getModels(),
+			// 'pagination' => [
+			// 	'totalCount' => $totalCount,
+			// ],
+		];
+
+		// return RESTfulHelper::queryAllToResponse(
+		// 	$query,
+		// 	$pageIndex,
+		// 	$pageSize
+		// );
+	}
+
+	public function actionView($id)
+	{
+		if (PrivHelper::hasPriv('aaa/user/crud', '0100') == false) {
+			if (Yii::$app->user->identity->usrID != $id)
+				throw new ForbiddenHttpException('access denied');
+		}
+
+		$model = UserExtraInfoModel::find()
+			// ->select(UserExtraInfoModel::selectableColumns())
+			->where(['uexUserID' => $id])
+			->asArray()
+			->one()
+		;
+
+		// if ($model !== null)
+			return $model;
+
+		// throw new NotFoundHttpException('The requested item not exist.');
+
+		// return RESTfulHelper::modelToResponse($this->findModel($id));
+	}
+
+	// public function actionCreate()
+	// {
+	// 	PrivHelper::checkPriv('aaa/user/crud', '1000');
+
+	// 	$model = new UserExtraInfoModel();
+	// 	if ($model->load(Yii::$app->request->getBodyParams(), '') == false)
+	// 		throw new NotFoundHttpException("parameters not provided");
+
+	// 	if ($model->save() == false)
+	// 		throw new UnprocessableEntityHttpException(implode("\n", $model->getFirstErrors()));
+
+	// 	return [
+	// 		'result' => [
+	// 			'message' => 'created',
+	// 			'usrID' => $model->usrID,
+	// 		],
+	// 	];
+	// }
+
+	// public function actionUpdate($id)
+	// {
+	// 	if (PrivHelper::hasPriv('aaa/user/crud', '0010') == false) {
+	// 		if (Yii::$app->user->identity->usrID != $id)
+	// 			throw new ForbiddenHttpException('access denied');
+	// 	}
+
+	// 	$model = $this->findModel($id);
+	// 	if ($model->load(Yii::$app->request->getBodyParams(), '') == false)
+	// 		throw new NotFoundHttpException("parameters not provided");
+
+	// 	if ($model->save() == false)
+	// 		throw new UnprocessableEntityHttpException(implode("\n", $model->getFirstErrors()));
+
+	// 	return [
+	// 		'result' => [
+	// 			'message' => 'updated',
+	// 			'usrID' => $model->usrID,
+	// 		],
+	// 	];
+	// }
+
+	// public function actionDelete($id)
+	// {
+	// 	if (PrivHelper::hasPriv('aaa/user/crud', '0001') == false) {
+	// 		if (Yii::$app->user->identity->usrID != $id)
+	// 			throw new ForbiddenHttpException('access denied');
+	// 	}
+
+	// 	$model = $this->findModel($id);
+
+	// 	if ($model->delete() == false)
+	// 		throw new UnprocessableEntityHttpException(implode("\n", $model->getFirstErrors()));
+
+	// 	return [
+	// 		'result' => [
+	// 			'message' => 'deleted',
+	// 			'usrID' => $model->usrID,
+	// 		],
+	// 	];
+	// }
+
+	public function actionOptions()
+	{
+		return 'options';
+	}
+
+}

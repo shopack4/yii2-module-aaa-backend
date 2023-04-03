@@ -1,0 +1,38 @@
+{
+    "name": "shopack/yii2-module-aaa-backend",
+    "type": "yii2-extension",
+    "authors": [
+        {
+            "name": "Kambiz Zandi",
+            "email": "kambizzandi@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4": {
+            "shopack\\aaa\\backend\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=7.4.0",
+        "yiisoft/yii2": "~2.0.45",
+        "bizley/jwt": "^3.0",
+        "ramsey/uuid": "^4.7",
+        "guzzlehttp/guzzle": "^7.5",
+        "aws/aws-sdk-php": "^3.262"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "4.8.34"
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true
+        }
+    }
+}
