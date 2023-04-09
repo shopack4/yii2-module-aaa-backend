@@ -16,6 +16,7 @@ class SignupForm extends Model
   public $email;
   public $mobile;
   public $password;
+  public $rememberMe = false;
 
 	// private $_inputName = '';
   private $_user = false;
@@ -36,6 +37,7 @@ class SignupForm extends Model
         'password',
       ], 'required'],
 
+      ['rememberMe', 'boolean'],
     ];
   }
 

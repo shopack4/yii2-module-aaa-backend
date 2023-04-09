@@ -9,7 +9,6 @@ use Yii;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\UnprocessableEntityHttpException;
-use yii\data\ActiveDataProvider;
 use shopack\base\backend\controller\BaseRestController;
 use shopack\base\backend\helpers\PrivHelper;
 use shopack\aaa\backend\models\UserModel;
@@ -65,25 +64,7 @@ class UserController extends BaseRestController
 		if (empty($filter) == false)
 			$query->andWhere($filter);
 
-		$dataProvider = new ActiveDataProvider([
-			'query' => $query,
-		]);
-
-		if (Yii::$app->request->getMethod() == 'HEAD') {
-			// $totalCount = $query->count();
-			$totalCount = $dataProvider->getTotalCount();
-			Yii::$app->response->headers->add('X-Pagination-Total-Count', $totalCount);
-			return [
-				'totalCount' => $totalCount,
-			];
-		}
-
-		return [
-			'data' => $dataProvider->getModels(),
-			// 'pagination' => [
-			// 	'totalCount' => $totalCount,
-			// ],
-		];
+		return $this->queryAllToResponse($query);
 	}
 
 	public function actionView($id)
@@ -108,12 +89,7 @@ class UserController extends BaseRestController
 			->one()
 		;
 
-		if ($model !== null)
-			return $model;
-
-		throw new NotFoundHttpException('The requested item not exist.');
-
-		// return RESTfulHelper::modelToResponse($this->findModel($id));
+		return $this->modelToResponse($model);
 	}
 
 	public function actionCreate()

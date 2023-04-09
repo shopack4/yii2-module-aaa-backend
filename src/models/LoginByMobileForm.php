@@ -72,7 +72,7 @@ class LoginByMobileForm extends Model
 				true
 			);
 
-			// list ($token, $mustApprove) = AuthHelper::doLogin($user, ['otp' => 'sms']);
+			// list ($token, $mustApprove) = AuthHelper::doLogin($user, false, ['otp' => 'sms']);
 
 			return array_merge([
 				// 'token' => $token,

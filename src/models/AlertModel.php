@@ -5,6 +5,8 @@
 
 namespace shopack\aaa\backend\models;
 
+use Yii;
+use yii\db\Expression;
 use shopack\aaa\backend\classes\AAAActiveRecord;
 
 class AlertModel extends AAAActiveRecord
@@ -28,5 +30,25 @@ class AlertModel extends AAAActiveRecord
 			],
 		];
 	}
+
+	public function insert($runValidation = true, $attributes = null)
+  {
+		$instanceID = Yii::$app->getInstanceID();
+
+		$this->alrLockedAt = new Expression("NOW()");
+		$this->alrLockedBy = $instanceID;
+
+		$ret = parent::insert($runValidation, $attributes);
+
+		if ($ret) {
+			try {
+				Yii::$app->alertManager->processQueue(1, $this->alrID);
+			} catch (\Throwable $th) {
+				//throw $th;
+			}
+		}
+
+		return $ret;
+  }
 
 }

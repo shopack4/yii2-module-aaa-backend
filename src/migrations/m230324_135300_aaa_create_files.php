@@ -28,7 +28,7 @@ CREATE TABLE `tbl_AAA_UploadFile` (
   `uflUpdatedBy` BIGINT(20) UNSIGNED NULL DEFAULT NULL,
   `uflRemovedAt` INT(10) NOT NULL DEFAULT '0',
   `uflRemovedBy` BIGINT(20) UNSIGNED NULL DEFAULT NULL,
-  `uflUniqueMD5` CHAR(32) AS (md5(concat_ws(_utf8mb4\'X\',ifnull(`uflPath`,_utf8mb4\'\'),`uflOriginalFileName`,ifnull(`uflCounter`,0),`uflCreatedBy`))) virtual,
+  `uflUniqueMD5` CHAR(32) AS (md5(concat_ws('X',ifnull(`uflPath`,''),`uflOriginalFileName`,ifnull(`uflCounter`,0),`uflCreatedBy`))) virtual,
   PRIMARY KEY (`uflID`) USING BTREE,
   UNIQUE INDEX `uflUniqueMD5` (`uflUniqueMD5`) USING BTREE,
   INDEX `FK_tbl_AAA_UploadFile_tbl_AAA_User` (`uflOwnerUserID`) USING BTREE,

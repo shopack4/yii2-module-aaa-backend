@@ -14,7 +14,7 @@ class m230321_100104_aaa_create_tblAlertTemplate extends Migration
 		$this->execute('RENAME TABLE `tbl_AAA_AlertType` TO `DELETED_tbl_AAA_AlertType`;');
 
     $this->execute(<<<SQLSTR
-CREATE TABLE `{{%AAA_AlertTemplate}}` (
+CREATE TABLE `tbl_AAA_AlertTemplate` (
 	`altID` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`altKey` VARCHAR(64) NOT NULL COLLATE 'utf8mb4_unicode_ci',
 	`altMedia` CHAR(1) NOT NULL COMMENT 'E:Email, S:SMS' COLLATE 'utf8mb4_unicode_ci',
@@ -40,7 +40,7 @@ SQLSTR
 		);
 
 		//enuApprovalRequestAlertType
-    $this->batchInsertIgnore('{{%AAA_AlertTemplate}}', [
+    $this->batchInsertIgnore('tbl_AAA_AlertTemplate', [
       'altKey',
       'altMedia',
       'altLanguage',
@@ -58,7 +58,7 @@ SQLSTR
 		]);
 
 		//enuForgotPasswordRequestAlertType
-    $this->batchInsertIgnore('{{%AAA_AlertTemplate}}', [
+    $this->batchInsertIgnore('tbl_AAA_AlertTemplate', [
       'altKey',
       'altMedia',
       'altLanguage',

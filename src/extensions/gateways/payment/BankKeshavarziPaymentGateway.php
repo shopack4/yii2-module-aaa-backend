@@ -10,30 +10,11 @@ use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
 
 class BankKeshavarziPaymentGateway
-	extends BasePaymentGateway
-	implements IPaymentGateway
+	extends AsanPardakhtPaymentGateway
 {
 	public function getTitle()
 	{
 		return 'Bank Keshavarzi';
-	}
-
-	public function getParametersSchema()
-	{
-		return array_merge(parent::getParametersSchema(), [
-		]);
-	}
-
-	public function prepare(&$paymentModel, $callbackUrl)
-	{
-	}
-
-	public function run($controller, &$paymentModel, $callbackUrl)
-	{
-	}
-
-	public function verify(&$paymentModel)
-	{
 	}
 
 }

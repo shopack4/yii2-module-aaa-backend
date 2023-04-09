@@ -21,7 +21,7 @@ class LoginForm extends Model
   public $ssid;
   public $password;
   // public $salt;
-  public $rememberMe = true;
+  public $rememberMe = false;
 
 	private $_inputName = '';
   private $_user = false;
@@ -133,7 +133,7 @@ class LoginForm extends Model
         throw new UnauthorizedHttpException("could not login. \n" . implode("\n", $this->getFirstErrors()));
       }
 
-      list ($token, $mustApprove) = AuthHelper::doLogin($user);
+      list ($token, $mustApprove) = AuthHelper::doLogin($user, $this->rememberMe);
 
       return [
         'token' => $token,

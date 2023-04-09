@@ -88,14 +88,16 @@ abstract class BaseS3ObjectStorageGateway extends BaseObjectStorageGateway
 			'endpoint' => $endpoint,
 			'credentials' => [
 				'key' => $accesskey,
-				'secret' => $secretkey
+				'secret' => $secretkey,
 			],
 			// Set the S3 class to use objects. arvanstorage.com/bucket
 			// instead of bucket.objects.arvanstorage.com
 			'use_path_style_endpoint' => !$EndpointIsVirtualHosted,
 			'http' => [
-        'verify' => false, //'/path/to/my/cert.pem'
-    	],
+				'verify' => false, //'/path/to/my/cert.pem'
+			],
+			//prevent using curl due to undefined function curl_multi_init
+			'http_handler' => new \GuzzleHttp\Handler\StreamHandler,
 		]);
 
 		$fullKey = implode('/', [$path, $fileName]);
