@@ -42,7 +42,7 @@ class LoginByMobileForm extends Model
 			// $lastName = null;
 
 			$user = UserModel::find()
-				->andWhere('usrStatus != \'' . enuUserStatus::REMOVED . '\'')
+				->andWhere('usrStatus != \'' . enuUserStatus::Removed . '\'')
 				->andWhere(['usrMobile' => $normalizedMobile])
 				->one();
 
@@ -50,7 +50,7 @@ class LoginByMobileForm extends Model
 				$user = new UserModel();
 				$user->usrMobile = $normalizedMobile;
 				$user->bypassRequestApprovalCode = true;
-				$user->usrStatus = enuUserStatus::NEW_FOR_LOGIN_BY_MOBILE;
+				$user->usrStatus = enuUserStatus::NewForLoginByMobile;
 
 				if ($user->save() == false)
         	throw new UnprocessableEntityHttpException("could not create new user\n" . implode("\n", $user->getFirstErrors()));

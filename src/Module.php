@@ -12,6 +12,9 @@ class Module
 	extends \shopack\base\common\base\BaseModule
 	implements BootstrapInterface
 {
+	//used for trust message channel
+	public $servicesPublicKeys = [];
+
 	public function init()
 	{
 		if (empty($this->id))
@@ -108,15 +111,64 @@ class Module
 					// 'prefix' => 'v1',
 					'controller' => [$this->id . '/online-payment'],
 					'pluralize' => false,
+
+					'tokens' => [
+						'{paymentkey}' => '<paymentkey:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}>',
+					],
+
 					'extraPatterns' => [
-						'callback/<onpid:\d+>' => 'callback',
+						'get-allowed-types' => 'get-allowed-types',
+						'callback/{paymentkey}' => 'callback',
 						'callback' => 'callback',
+					] + (YII_ENV_DEV ? ['devtestpaymentpage' => 'devtestpaymentpage'] : []),
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/basket'],
+					'pluralize' => false,
+
+					// 'tokens' => [
+					// 	'{uuid}' => '<uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}>',
+					// ],
+
+					'patterns' => [
+						// 'GET,HEAD'					=> 'index',
+						// 'GET,HEAD {uuid}'		=> 'view',
+						// 'POST'							=> 'create',
+						// 'PUT,PATCH {uuid}'	=> 'update',
+						// 'DELETE {uuid}'			=> 'delete',
+						// '{uuid}'						=> 'options',
+						// ''									=> 'options',
+					],
+
+					'extraPatterns' => [
+						'POST add' => 'add',
+						'POST checkout' => 'checkout',
 					],
 				],
 				[
 					'class' => \yii\rest\UrlRule::class,
 					// 'prefix' => 'v1',
 					'controller' => [$this->id . '/voucher'],
+					'pluralize' => false,
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/wallet'],
+					'pluralize' => false,
+
+					'extraPatterns' => [
+						'ensure-i-have-default-wallet' => 'ensure-i-have-default-wallet',
+						'POST increase/{id}' => 'increase',
+						'POST increase' => 'increase',
+					],
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/wallet-transaction'],
 					'pluralize' => false,
 				],
 				[
@@ -193,6 +245,11 @@ class Module
 	public function GatewayClass($pluginName)
 	{
 		return $this->ExtensionClass('gateways', $pluginName);
+	}
+
+	public function GatewayList($type)
+	{
+		return $this->ExtensionList('gateways', $type);
 	}
 
 }

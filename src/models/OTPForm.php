@@ -43,7 +43,7 @@ class OTPForm extends Model
 			$lastName = null;
 
 			$user = UserModel::find()
-				->where('usrStatus != \'' . enuUserStatus::REMOVED . '\'')
+				->where('usrStatus != \'' . enuUserStatus::Removed . '\'')
 				->andWhere(['usrMobile' => $normalizedMobile])
 				->one();
 

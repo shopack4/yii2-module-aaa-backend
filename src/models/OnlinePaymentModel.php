@@ -6,7 +6,9 @@
 namespace shopack\aaa\backend\models;
 
 use Yii;
-use Ramsey\Uuid\Uuid;
+use yii\db\Expression;
+use yii\web\NotFoundHttpException;
+use yii\web\UnprocessableEntityHttpException;
 use shopack\aaa\backend\classes\AAAActiveRecord;
 use shopack\aaa\common\enums\enuOnlinePaymentStatus;
 
@@ -17,7 +19,7 @@ class OnlinePaymentModel extends AAAActiveRecord
   use \shopack\base\common\db\SoftDeleteActiveRecordTrait;
   public function initSoftDelete()
   {
-    $this->softdelete_RemovedStatus  = enuOnlinePaymentStatus::REMOVED;
+    $this->softdelete_RemovedStatus  = enuOnlinePaymentStatus::Removed;
     $this->softdelete_StatusField    = 'onpStatus';
     $this->softdelete_RemovedAtField = 'onpRemovedAt';
     $this->softdelete_RemovedByField = 'onpRemovedBy';
@@ -43,22 +45,11 @@ class OnlinePaymentModel extends AAAActiveRecord
 
 	public function insert($runValidation = true, $attributes = null)
 	{
-		if (empty($this->onpKey))
-			$this->onpKey = Uuid::uuid4()->toString();
-			// $this->onpKey = Yii::$app->security->generateRandomString();
+		if (empty($this->onpUUID))
+			$this->onpUUID = new Expression('UUID()'); //Uuid::uuid4()->toString();
+			// $this->onpUUID = Yii::$app->security->generateRandomString();
 
 		return parent::insert($runValidation, $attributes);
 	}
-
-	// private $_onlinePaymentClass = null;
-	// public function getOnlinePaymentClass()
-	// {
-	// 	if ($this->_onlinePaymentClass == null) {
-	// 		$aaaModule = Yii::$app->getModule('aaa');
-	// 		$this->_onlinePaymentClass = clone $aaaModule->OnlinePaymentClass($this->onpPluginName);
-	// 		$this->_onlinePaymentClass->extensionModel = $this;
-	// 	}
-	// 	return $this->_onlinePaymentClass;
-	// }
 
 }

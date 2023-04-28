@@ -8,6 +8,7 @@ namespace shopack\aaa\backend\extensions\gateways\payment;
 use Yii;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
+use shopack\aaa\common\enums\enuPaymentGatewayType;
 
 class BankKeshavarziPaymentGateway
 	extends AsanPardakhtPaymentGateway
@@ -15,6 +16,11 @@ class BankKeshavarziPaymentGateway
 	public function getTitle()
 	{
 		return 'Bank Keshavarzi';
+	}
+
+	public function getPaymentGatewayType()
+	{
+		return enuPaymentGatewayType::IranBank;
 	}
 
 }

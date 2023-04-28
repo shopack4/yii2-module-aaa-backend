@@ -7,7 +7,7 @@ namespace shopack\aaa\backend\classes;
 
 interface IPaymentGateway
 {
-	public function prepare(&$paymentModel, $callbackUrl);
-	public function run($controller, &$paymentModel, $callbackUrl);
-	public function verify(&$paymentModel);
+	public function prepare(&$gatewayModel, $onlinePaymentModel, $callbackUrl);
+	public function run($controller, &$gatewayModel, $callbackUrl);
+	public function verify(&$gatewayModel, $onlinePaymentModel);
 }

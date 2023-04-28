@@ -17,7 +17,7 @@ class GatewayModel extends AAAActiveRecord
   use \shopack\base\common\db\SoftDeleteActiveRecordTrait;
   public function initSoftDelete()
   {
-    $this->softdelete_RemovedStatus  = enuGatewayStatus::REMOVED;
+    $this->softdelete_RemovedStatus  = enuGatewayStatus::Removed;
     $this->softdelete_StatusField    = 'gtwStatus';
     $this->softdelete_RemovedAtField = 'gtwRemovedAt';
     $this->softdelete_RemovedByField = 'gtwRemovedBy';

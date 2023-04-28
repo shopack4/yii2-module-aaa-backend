@@ -77,7 +77,7 @@ class LoginForm extends Model
     if ($this->_user === false) {
       $query = UserModel::find()
         ->addSelect('usrPasswordHash')
-        ->andWhere('usrStatus != \'' . enuUserStatus::REMOVED . '\'')
+        ->andWhere('usrStatus != \'' . enuUserStatus::Removed . '\'')
         // ->with('role')
         ;
 

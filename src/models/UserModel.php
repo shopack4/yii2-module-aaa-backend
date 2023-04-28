@@ -21,7 +21,7 @@ class UserModel extends AAAActiveRecord
   use \shopack\base\common\db\SoftDeleteActiveRecordTrait;
   public function initSoftDelete()
   {
-    $this->softdelete_RemovedStatus  = enuUserStatus::REMOVED;
+    $this->softdelete_RemovedStatus  = enuUserStatus::Removed;
     $this->softdelete_StatusField    = 'usrStatus';
     $this->softdelete_RemovedAtField = 'usrRemovedAt';
     $this->softdelete_RemovedByField = 'usrRemovedBy';
@@ -46,13 +46,13 @@ class UserModel extends AAAActiveRecord
     return [
 			['usrEmail', 'unique',
 				'targetClass' => '\shopack\aaa\backend\models\UserModel',
-        'filter' => ['!=', 'usrStatus', enuUserStatus::REMOVED],
+        'filter' => ['!=', 'usrStatus', enuUserStatus::Removed],
 				'message' => 'This email address has already been taken.',
 				// 'on' => [self::SC_CREATE, self::SC_REGISTER, self::SC_UPDATE, self::SC_SELFUPDATE],
 			],
 			['usrMobile', 'unique',
 				'targetClass' => '\shopack\aaa\backend\models\UserModel',
-        'filter' => ['!=', 'usrStatus', enuUserStatus::REMOVED],
+        'filter' => ['!=', 'usrStatus', enuUserStatus::Removed],
 				'message' => 'This mobile number has already been taken.',
 				// 'on' => [self::SC_CREATE, self::SC_REGISTER, self::SC_UPDATE, self::SC_SELFUPDATE],
 			],
@@ -94,10 +94,9 @@ class UserModel extends AAAActiveRecord
 
   public function save($runValidation = true, $attributeNames = null)
   {
-
     if ($this->isNewRecord) {
       if (empty($this->usrUUID)) {
-        $this->usrUUID = new Expression('UUID()');
+        $this->usrUUID = new Expression('UUID()'); //Uuid::uuid4()->toString();
       }
     }
 
@@ -143,7 +142,7 @@ class UserModel extends AAAActiveRecord
   {
     return UserModel::find()
       ->where(['usrID' => $id])
-      ->andWhere(['!=', 'usrStatus', enuUserStatus::REMOVED])
+      ->andWhere(['!=', 'usrStatus', enuUserStatus::Removed])
       ->one();
   }
 

@@ -16,6 +16,7 @@ use shopack\base\backend\helpers\AuthHelper;
 use shopack\base\backend\helpers\GeneralHelper;
 use shopack\aaa\backend\models\UserModel;
 use shopack\aaa\backend\models\AlertModel;
+use shopack\aaa\common\enums\enuAlertStatus;
 use shopack\aaa\common\enums\enuApprovalRequestKeyType;
 use shopack\aaa\common\enums\enuApprovalRequestAlertType;
 use shopack\aaa\common\enums\enuApprovalRequestStatus;
@@ -72,7 +73,7 @@ class ApprovalRequestModel extends AAAActiveRecord
   //     ['aprApplyAt', 'safe'],
 
   //     ['aprStatus', 'string', 'max' => 1],
-  //     ['aprStatus', 'default', 'value' => enuApprovalRequestStatus::NEW],
+  //     ['aprStatus', 'default', 'value' => enuApprovalRequestStatus::New],
 
   //     ['aprCreatedAt', 'safe'],
   //     // ['aprCreatedBy', 'integer'],
@@ -121,6 +122,8 @@ class ApprovalRequestModel extends AAAActiveRecord
     $lastName = null,
     $forLogin = false
   ) {
+    $fnGetConst = function($value) { return "'{$value}'"; };
+
     list ($normalizedInput, $inputType) = AuthHelper::checkLoginPhrase($emailOrMobile, false);
 
     // if ($inputType != $type)
@@ -135,7 +138,7 @@ class ApprovalRequestModel extends AAAActiveRecord
           UPDATE {$alertTableName} alr
       INNER JOIN {$approvalRequestTableName} apr
               ON apr.aprID = alr.alrApprovalRequestID
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
            WHERE aprKey = '{$normalizedInput}'
              AND aprExpireAt <= NOW()
 SQLSTR;
@@ -143,7 +146,7 @@ SQLSTR;
 
     $qry =<<<SQLSTR
           UPDATE {$approvalRequestTableName}
-             SET aprStatus = 'E'
+             SET aprStatus = {$fnGetConst(enuApprovalRequestStatus::Expired)}
            WHERE aprKey = '{$normalizedInput}'
              AND aprExpireAt <= NOW()
 SQLSTR;
@@ -161,7 +164,7 @@ SQLSTR;
       ->where(['aprKey' => $normalizedInput])
       // ->andWhere(['aprCode' => $code])
       ->andWhere(['in', 'aprStatus', [
-        enuApprovalRequestStatus::NEW, enuApprovalRequestStatus::SENT] ])
+        enuApprovalRequestStatus::New, enuApprovalRequestStatus::Sent] ])
       ->limit(2)
       // ->asArray()
       ->all();
@@ -171,17 +174,17 @@ SQLSTR;
           UPDATE {$alertTableName} alr
       INNER JOIN {$approvalRequestTableName} apr
               ON apr.aprID = alr.alrApprovalRequestID
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
            WHERE aprKey = '{$normalizedInput}'
-             AND aprStatus IN ('N', 'S')
+             AND aprStatus IN ({$fnGetConst(enuApprovalRequestStatus::New)}, {$fnGetConst(enuApprovalRequestStatus::Sent)})
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
 
       $qry =<<<SQLSTR
           UPDATE {$approvalRequestTableName}
-             SET aprStatus = 'E'
+             SET aprStatus = {$fnGetConst(enuApprovalRequestStatus::Expired)}
            WHERE aprKey = '{$normalizedInput}'
-             AND aprStatus IN ('N', 'S')
+             AND aprStatus IN ({$fnGetConst(enuApprovalRequestStatus::New)}, {$fnGetConst(enuApprovalRequestStatus::Sent)})
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
     }
@@ -190,7 +193,7 @@ SQLSTR;
     $cfgPath = implode('.', [
       'AAA',
       'approvalRequest',
-      $inputType == 'E' ? 'email' : 'mobile',
+      $inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile',
       'resend-ttl'
     ]);
     $resendTTL = ArrayHelper::getValue($settings, $cfgPath, 120);
@@ -208,7 +211,7 @@ SQLSTR;
       }
 
       if ($approvalRequestModel->IsExpired) {
-        $approvalRequestModel->aprStatus = enuApprovalRequestStatus::EXPIRED;
+        $approvalRequestModel->aprStatus = enuApprovalRequestStatus::Expired;
         $approvalRequestModel->save();
 
         $approvalRequestModel = null;
@@ -233,8 +236,8 @@ SQLSTR;
 
     if (empty($userID)) {
       $userModel = UserModel::find()
-        ->where('usrStatus != \'' . enuUserStatus::REMOVED . '\'')
-        ->andWhere(['usr' . ($inputType == 'E' ? 'Email' : 'Mobile') => $normalizedInput])
+        ->andWhere(['usr' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'Email' : 'Mobile') => $normalizedInput])
+        ->andWhere(['<>', 'usrStatus', enuUserStatus::Removed])
         ->one();
 
       if (!$userModel && $forLogin == false)
@@ -253,9 +256,9 @@ SQLSTR;
     if (empty($code)) {
       $codeIsNew = true;
 
-      if ($inputType == enuApprovalRequestKeyType::EMAIL)
+      if ($inputType == enuApprovalRequestKeyType::Email)
         $code = Yii::$app->security->generateRandomString() . '_' . time();
-      else if ($inputType == enuApprovalRequestKeyType::MOBILE)
+      else if ($inputType == enuApprovalRequestKeyType::Mobile)
         $code = strval(rand(123456, 987654));
       else
         throw new UnauthorizedHttpException("invalid input type {$inputType}");
@@ -263,7 +266,7 @@ SQLSTR;
       $cfgPath = implode('.', [
         'AAA',
         'approvalRequest',
-        $inputType == 'E' ? 'email' : 'mobile',
+        $inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile',
         'expire-ttl'
       ]);
       $expireTTL = ArrayHelper::getValue($settings, $cfgPath, 20 * 60);
@@ -284,7 +287,7 @@ SQLSTR;
 
       $qry =<<<SQLSTR
           UPDATE {$alertTableName}
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
            WHERE alrApprovalRequestID = '{$approvalRequestModel->aprID}'
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
@@ -302,15 +305,15 @@ SQLSTR;
       'code' => $code,
     ];
 
-    if ($inputType == enuApprovalRequestKeyType::EMAIL) {
+    if ($inputType == enuApprovalRequestKeyType::Email) {
       $alertModel->alrTypeKey = ($forLogin
-        ? enuApprovalRequestAlertType::EMAIL_APPROVAL_FOR_LOGIN
-        : enuApprovalRequestAlertType::EMAIL_APPROVAL);
+        ? enuApprovalRequestAlertType::EmailApprovalForLogin
+        : enuApprovalRequestAlertType::EmailApproval);
       $alrInfo['email'] = $normalizedInput;
     } else {
       $alertModel->alrTypeKey = ($forLogin
-        ? enuApprovalRequestAlertType::MOBILE_APPROVAL_FOR_LOGIN
-        : enuApprovalRequestAlertType::MOBILE_APPROVAL);
+        ? enuApprovalRequestAlertType::MobileApprovalForLogin
+        : enuApprovalRequestAlertType::MobileApproval);
       $alrInfo['mobile'] = $normalizedInput;
     }
 
@@ -341,13 +344,13 @@ SQLSTR;
       ->joinWith('user', "INNER JOIN")
       ->where(['aprKey' => $normalizedInput])
       ->andWhere(['aprKeyType' => $inputType])
-      ->andWhere(['in', 'aprStatus', [enuApprovalRequestStatus::NEW, enuApprovalRequestStatus::SENT]])
+      ->andWhere(['in', 'aprStatus', [enuApprovalRequestStatus::New, enuApprovalRequestStatus::Sent]])
       ->limit(2)
       // ->asArray()
       ->all();
 
     if (empty($models))
-      throw new UnauthorizedHttpException('invalid ' . ($inputType == 'E' ? 'email' : 'mobile'));
+      throw new UnauthorizedHttpException('invalid ' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile'));
 
     if (count($models) > 1)
       throw new UnauthorizedHttpException('more than one request found');
@@ -357,7 +360,7 @@ SQLSTR;
     $seconds = 0;
 
     if ($approvalRequestModel->IsExpired) {
-      // $approvalRequestModel->aprStatus = enuApprovalRequestStatus::EXPIRED;
+      // $approvalRequestModel->aprStatus = enuApprovalRequestStatus::Expired;
       // $approvalRequestModel->save();
 
       // throw new UnauthorizedHttpException('code expired');
@@ -366,7 +369,7 @@ SQLSTR;
       $cfgPath = implode('.', [
         'AAA',
         'approvalRequest',
-        $inputType == 'E' ? 'email' : 'mobile',
+        $inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile',
         'resend-ttl'
       ]);
       $resendTTL = ArrayHelper::getValue($settings, $cfgPath, 120);
@@ -398,13 +401,13 @@ SQLSTR;
       ->where(['aprKey' => $normalizedInput])
       ->andWhere(['aprCode' => $code])
       ->andWhere(['in', 'aprStatus', [
-        enuApprovalRequestStatus::NEW, enuApprovalRequestStatus::SENT, enuApprovalRequestStatus::APPLIED] ])
+        enuApprovalRequestStatus::New, enuApprovalRequestStatus::Sent, enuApprovalRequestStatus::Applied] ])
       ->limit(2)
       // ->asArray()
       ->all();
 
     if (empty($models))
-      throw new UnauthorizedHttpException('invalid ' . ($inputType == 'E' ? 'email' : 'mobile') . ' and/or code');
+      throw new UnauthorizedHttpException('invalid ' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile') . ' and/or code');
 
     if (count($models) > 1)
       throw new UnauthorizedHttpException('more than one request found');
@@ -418,20 +421,20 @@ SQLSTR;
     //validate
     //------------------------------
     if ($approvalRequestModel->aprKeyType != $inputType) {
-      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::EXPIRED;
+      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::Expired;
       $approvalRequestModel->save();
 
       throw new UnauthorizedHttpException('incorrect key type');
     }
 
-    if ($approvalRequestModel->aprStatus == enuApprovalRequestStatus::APPLIED)
+    if ($approvalRequestModel->aprStatus == enuApprovalRequestStatus::Applied)
       throw new UnauthorizedHttpException('this code applied before');
 
-    if ($approvalRequestModel->aprStatus != enuApprovalRequestStatus::SENT)
+    if ($approvalRequestModel->aprStatus != enuApprovalRequestStatus::Sent)
       throw new UnauthorizedHttpException('code not sent to the client');
 
     if ($approvalRequestModel->IsExpired) {
-      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::EXPIRED;
+      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::Expired;
       $approvalRequestModel->save();
 
       throw new UnauthorizedHttpException('code expired');
@@ -451,7 +454,7 @@ SQLSTR;
 
       $userModel->bypassRequestApprovalCode = true;
 
-      if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::EMAIL) {
+      if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::Email) {
         $userModel->usrEmailApprovedAt = new Expression('NOW()');
         if (empty($userModel->usrEmail)
             || ($userModel->usrEmail != $approvalRequestModel->aprKey)
@@ -460,7 +463,7 @@ SQLSTR;
           if ($sendAlert === null)
             $sendAlert = true;
         }
-      } else if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::MOBILE) {
+      } else if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::Mobile) {
         $userModel->usrMobileApprovedAt = new Expression('NOW()');
         if (empty($userModel->usrMobile)
             || ($userModel->usrMobile != $approvalRequestModel->aprKey)
@@ -477,7 +480,7 @@ SQLSTR;
       //2: apr
       if ($approvalRequestModel->aprUserID == null)
         $approvalRequestModel->aprUserID = $userModel->usrID;
-      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::APPLIED;
+      $approvalRequestModel->aprStatus = enuApprovalRequestStatus::Applied;
       $approvalRequestModel->aprApplyAt = new Expression('NOW()');
       if ($approvalRequestModel->save() == false)
         throw new UnprocessableEntityHttpException("could not save approval request\n" . implode("\n", $approvalRequestModel->getFirstErrors()));
@@ -506,11 +509,11 @@ SQLSTR;
           'lastName' => $userModel->usrLastName,
         ];
 
-        if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::EMAIL) {
-          $alertModel->alrTypeKey = enuApprovalRequestAlertType::EMAIL_APPROVED;
+        if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::Email) {
+          $alertModel->alrTypeKey = enuApprovalRequestAlertType::EmailApproved;
           $alrInfo['email'] = $approvalRequestModel->aprKey;
         } else {
-          $alertModel->alrTypeKey = enuApprovalRequestAlertType::MOBILE_APPROVED;
+          $alertModel->alrTypeKey = enuApprovalRequestAlertType::MobileApproved;
           $alrInfo['mobile'] = $approvalRequestModel->aprKey;
         }
         $alertModel->alrInfo = $alrInfo;

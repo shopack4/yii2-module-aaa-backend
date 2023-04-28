@@ -8,11 +8,14 @@ namespace shopack\aaa\backend\controllers;
 use Yii;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
-use yii\web\UnprocessableEntityHttpException;
+use yii\web\ServerErrorHttpException;
 use yii\data\ActiveDataProvider;
 use shopack\base\backend\controller\BaseRestController;
 use shopack\base\backend\helpers\PrivHelper;
+use shopack\aaa\common\enums\enuPaymentGatewayType;
 use shopack\aaa\backend\models\OnlinePaymentModel;
+use shopack\aaa\backend\models\GatewayModel;
+use shopack\aaa\common\enums\enuGatewayStatus;
 
 class OnlinePaymentController extends BaseRestController
 {
@@ -22,6 +25,7 @@ class OnlinePaymentController extends BaseRestController
 
 		$behaviors[BaseRestController::BEHAVIOR_AUTHENTICATOR]['except'] = [
 			'callback',
+			'devtestpaymentpage',
 		];
 
 		return $behaviors;
@@ -39,11 +43,16 @@ class OnlinePaymentController extends BaseRestController
 	{
 		$filter = [];
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0100') == false)
-			$filter = ['onpID' => Yii::$app->user->identity->onpID];
+			$filter = ['vchOwnerUserID' => Yii::$app->user->identity->usrID];
 
 		$searchModel = new OnlinePaymentModel;
 		$query = $searchModel::find()
 			->select(OnlinePaymentModel::selectableColumns())
+			->with('gateway')
+			->with('voucher')
+			->with('createdByUser')
+			->with('updatedByUser')
+			->with('removedByUser')
 			->asArray()
 		;
 
@@ -57,17 +66,24 @@ class OnlinePaymentController extends BaseRestController
 
 	public function actionView($id)
 	{
-		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0100') == false) {
-			if (Yii::$app->user->identity->onpID != $id)
-				throw new ForbiddenHttpException('access denied');
-		}
-
 		$model = OnlinePaymentModel::find()
 			->select(OnlinePaymentModel::selectableColumns())
+			->with('gateway')
+			->with('voucher')
+			->with('createdByUser')
+			->with('updatedByUser')
+			->with('removedByUser')
 			->where(['onpID' => $id])
 			->asArray()
 			->one()
 		;
+
+		if ((PrivHelper::hasPriv('aaa/online-payment/crud', '0100') == false)
+			&& ($model != null)
+			&& ($model->voucher->vchOwnerUserID != Yii::$app->user->identity->usrID)
+		) {
+			throw new ForbiddenHttpException('access denied');
+		}
 
 		return $this->modelToResponse($model);
 	}
@@ -105,7 +121,7 @@ class OnlinePaymentController extends BaseRestController
 	public function actionUpdate($id)
 	{
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0010') == false) {
-			if (Yii::$app->user->identity->onpID != $id)
+			if (Yii::$app->user->identity->usrID != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -131,7 +147,7 @@ class OnlinePaymentController extends BaseRestController
 	public function actionDelete($id)
 	{
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0001') == false) {
-			if (Yii::$app->user->identity->onpID != $id)
+			if (Yii::$app->user->identity->usrID != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -157,43 +173,59 @@ class OnlinePaymentController extends BaseRestController
 		return 'options';
 	}
 
-	public function actionPluginList($type = null)
+	public function actionGetAllowedTypes()
 	{
-		return $this->module->OnlinePaymentPluginList($type);
+		$types = [];
+
+		$models = GatewayModel::find()
+			->select('gtwPluginName')
+			->andWhere(['gtwPluginType' => 'payment'])
+			->andWhere(['gtwStatus' => enuGatewayStatus::Active])
+			->groupBy('gtwPluginName')
+			->asArray()
+			->all();
+		;
+
+		if (empty($models) == false) {
+			foreach ($models as $model) {
+				$gtwclass = Yii::$app->controller->module->GatewayClass($model['gtwPluginName']);
+
+				$type = $gtwclass->getPaymentGatewayType();;
+
+				if (YII_ENV_PROD && ($type == enuPaymentGatewayType::DevTest))
+					continue;
+
+				$types[] = $type;
+			}
+		}
+
+		return $types;
 	}
 
-	public function actionPluginParamsSchema($key)
+	public function actionDevtestpaymentpage($paymentkey, $callback)
 	{
-		return $this->module->OnlinePaymentPluginParamsSchema($key);
-	}
+		if (!YII_ENV_DEV)
+			throw new ServerErrorHttpException('only dev mode allowed');
 
-	public function actionPluginRestrictionsSchema($key)
-	{
-		return $this->module->OnlinePaymentPluginRestrictionsSchema($key);
-	}
+		$this->response->format = \yii\web\Response::FORMAT_HTML;
 
-	public function actionPluginUsagesSchema($key)
-	{
-		return $this->module->OnlinePaymentPluginUsagesSchema($key);
-	}
-
-	public function actionPluginWebhooksSchema($key)
-	{
-		return $this->module->OnlinePaymentPluginWebhooksSchema($key);
+		return <<<HTML
+<p>this is test payment page</p>
+<p>paymentkey: {$paymentkey}</p>
+<p>callback: {$callback}</p>
+<p><a href='{$callback}?result=ok'>[OK]</a></p>
+<p><a href='{$callback}?result=error'>[ERROR]</a></p>
+HTML;
 	}
 
 	//accepts all http methods
-	public function actionCallback($onpid)
+	public function actionCallback($paymentkey)
   {
-		return ['onpid' => $onpid];
+		$onlinePaymentModel = Yii::$app->paymentManager->approveOnlinePayment($paymentkey);
 
-
-
-
-		if (($onlinePaymentModel = OnlinePaymentModel::findOne(['onpID' => $onpid])) === null) {
-			Yii::error('The requested online payment does not exist.', __METHOD__);
-			throw new NotFoundHttpException("The requested online payment does not exist.");
-		}
+		$this->redirect([$onlinePaymentModel->onpCallbackUrl,
+			'paymentkey' => $paymentkey,
+		]);
 
 		// $onlinePaymentClass = $onlinePaymentModel->getOnlinePaymentClass();
 
@@ -228,5 +260,6 @@ class OnlinePaymentController extends BaseRestController
 
 		// return $ret;
   }
+
 
 }

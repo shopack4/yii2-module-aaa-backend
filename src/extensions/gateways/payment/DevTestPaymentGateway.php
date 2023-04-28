@@ -6,54 +6,52 @@
 namespace shopack\aaa\backend\extensions\gateways\payment;
 
 use Yii;
+use shopack\base\common\helpers\Url;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
 use shopack\aaa\common\enums\enuPaymentGatewayType;
 
-class BankMellatPaymentGateway
+class DevTestPaymentGateway
 	extends BasePaymentGateway
 	implements IPaymentGateway
 {
-	const PARAM_TERMINAL_ID = 'terminalID';
-	const PARAM_USERNAME = 'userName';
-	const PARAM_PASSWORD = 'password';
+	//must be 127.0.0.1 for running
+	const PARAM_KEY = 'key';
 
 	public function getTitle()
 	{
-		return 'Bank Mellat';
+		return 'Dev Test';
 	}
 
 	public function getPaymentGatewayType()
 	{
-		return enuPaymentGatewayType::IranBank;
+		return enuPaymentGatewayType::DevTest;
 	}
 
 	public function getParametersSchema()
 	{
 		return array_merge(parent::getParametersSchema(), [
 			[
-				'id' => self::PARAM_TERMINAL_ID,
+				'id' => self::PARAM_KEY,
 				'type' => 'string',
 				'mandatory' => 1,
-				'label' => 'Terminal ID',
-			],
-			[
-				'id' => self::PARAM_USERNAME,
-				'type' => 'string',
-				'mandatory' => 1,
-				'label' => 'User Name',
-			],
-			[
-				'id' => self::PARAM_PASSWORD,
-				'type' => 'password',
-				'mandatory' => 1,
-				'label' => 'Password',
+				'label' => 'Key',
 			],
 		]);
 	}
 
+	//list ($response, $trackID, $paymentUrl)
 	public function prepare(&$gatewayModel, $onlinePaymentModel, $callbackUrl)
 	{
+		return [
+			'ok',
+			'track-' . $onlinePaymentModel->onpUUID,
+			Url::to([
+				'/aaa/online-payment/devtestpaymentpage',
+				'paymentkey' => $onlinePaymentModel->onpUUID,
+				'callback' => $callbackUrl,
+			], true),
+		];
 	}
 
 	public function run($controller, &$gatewayModel, $callbackUrl)
@@ -62,6 +60,10 @@ class BankMellatPaymentGateway
 
 	public function verify(&$gatewayModel, $onlinePaymentModel)
 	{
+		return [
+			// 'ref-' . $onlinePaymentModel->onpUUID,
+			'this is response',
+		];
 	}
 
 }

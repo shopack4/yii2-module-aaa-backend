@@ -8,6 +8,7 @@ namespace shopack\aaa\backend\extensions\gateways\payment;
 use Yii;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
+use shopack\aaa\common\enums\enuPaymentGatewayType;
 
 class AsanPardakhtPaymentGateway
 	extends BasePaymentGateway
@@ -24,6 +25,11 @@ class AsanPardakhtPaymentGateway
 	public function getTitle()
 	{
 		return 'Asan Pardakht';
+	}
+
+	public function getPaymentGatewayType()
+	{
+		return enuPaymentGatewayType::IranBank;
 	}
 
 	public function getParametersSchema()
@@ -62,15 +68,15 @@ class AsanPardakhtPaymentGateway
 		]);
 	}
 
-	public function prepare(&$paymentModel, $callbackUrl)
+	public function prepare(&$gatewayModel, $onlinePaymentModel, $callbackUrl)
 	{
 	}
 
-	public function run($controller, &$paymentModel, $callbackUrl)
+	public function run($controller, &$gatewayModel, $callbackUrl)
 	{
 	}
 
-	public function verify(&$paymentModel)
+	public function verify(&$gatewayModel, $onlinePaymentModel)
 	{
 	}
 

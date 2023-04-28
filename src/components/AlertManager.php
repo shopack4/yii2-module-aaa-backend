@@ -10,7 +10,9 @@ use yii\base\Component;
 use yii\db\Expression;
 use yii\web\NotFoundHttpException;
 use shopack\aaa\common\enums\enuGatewayStatus;
+use shopack\aaa\common\enums\enuAlertTemplateMedia;
 use shopack\aaa\common\enums\enuAlertStatus;
+use shopack\aaa\common\enums\enuAlertResultStatus;
 use shopack\aaa\common\enums\enuApprovalRequestStatus;
 use shopack\aaa\common\enums\enuForgotPasswordRequestStatus;
 use shopack\aaa\backend\models\GatewayModel;
@@ -27,7 +29,7 @@ class AlertManager extends Component
 		{
       $this->defaultSmsGatewayModel = GatewayModel::find()
         ->andWhere(['gtwPluginType' => 'sms'])
-        ->andWhere(['<>', 'gtwStatus', enuGatewayStatus::REMOVED])
+        ->andWhere(['<>', 'gtwStatus', enuGatewayStatus::Removed])
         ->one();
 
       if ($this->defaultSmsGatewayModel == null)
@@ -64,8 +66,8 @@ class AlertManager extends Component
          SET alrLockedBy = NULL
            , alrLockedAt = NULL
        WHERE alrLockedBy = '{$instanceID}'
-         AND (alrStatus = {$fnGetConst(enuAlertStatus::NEW)}
-          OR (alrStatus = {$fnGetConst(enuAlertStatus::ERROR)}
+         AND (alrStatus = {$fnGetConst(enuAlertStatus::New)}
+          OR (alrStatus = {$fnGetConst(enuAlertStatus::Error)}
          AND alrLastTryAt < DATE_SUB(NOW(), INTERVAL {$lastTryInterval} MINUTE)
              )
              )
@@ -96,8 +98,8 @@ SQL;
           OR alrLockedAt < DATE_SUB(NOW(), INTERVAL 1 HOUR)
           OR alrLockedBy = '{$instanceID}'
              )
-         AND (alrStatus = {$fnGetConst(enuAlertStatus::NEW)}
-          OR (alrStatus = {$fnGetConst(enuAlertStatus::ERROR)}
+         AND (alrStatus = {$fnGetConst(enuAlertStatus::New)}
+          OR (alrStatus = {$fnGetConst(enuAlertStatus::Error)}
          AND alrLastTryAt < DATE_SUB(NOW(), INTERVAL {$lastTryInterval} MINUTE)
              )
              )
@@ -119,8 +121,8 @@ SQL;
 //   INNER JOIN tbl_AAA_AlertTemplate
 //           ON tbl_AAA_AlertTemplate.altKey = tbl_AAA_Alert.alrTypeKey
 //        WHERE alrLockedBy = '{$instanceID}'
-//          AND (alrStatus = {$fnGetConst(enuAlertStatus::NEW)}
-//           OR (alrStatus = {$fnGetConst(enuAlertStatus::ERROR)}
+//          AND (alrStatus = {$fnGetConst(enuAlertStatus::New)}
+//           OR (alrStatus = {$fnGetConst(enuAlertStatus::Error)}
 //          AND alrLastTryAt < DATE_SUB(NOW(), INTERVAL {$lastTryInterval} MINUTE)
 //              )
 //              )
@@ -134,9 +136,9 @@ SQL;
         ->innerJoinWith('alertTemplate')
         ->andWhere(['alrLockedBy' => $instanceID])
         ->andWhere(['OR',
-          ['alrStatus' => enuAlertStatus::NEW],
+          ['alrStatus' => enuAlertStatus::New],
           ['AND',
-            ['alrStatus' => enuAlertStatus::ERROR],
+            ['alrStatus' => enuAlertStatus::Error],
             ['<', 'alrLastTryAt', new Expression("DATE_SUB(NOW(), INTERVAL {$lastTryInterval} MINUTE)")]
           ]
         ])
@@ -193,10 +195,10 @@ SQL;
 
         //-- email -----
         try {
-          $key = 'E';
+          $key = enuAlertTemplateMedia::Email;
 
           if (in_array($alertModel->alertTemplate->altMedia, [$key, 'A'])
-              && (($alrResult[$key]['status'] ?? 'N') != 'S')
+              && (($alrResult[$key]['status'] ?? enuAlertResultStatus::New) != enuAlertResultStatus::Sent)
           ) {
             if (empty($alertID))
 							echo "    Send Email to " . $alertModel->alrTarget . ": ";
@@ -207,7 +209,7 @@ SQL;
 							echo "OK. ref: " . $refID . "\n";
 
             $alrResult[$key] = [
-              'status' => 'S',
+              'status' => enuAlertResultStatus::Sent,
               'ref-id' => $refID,
               'sent-at' => $now,
             ];
@@ -219,17 +221,17 @@ SQL;
           ++$errorCount;
 
           $alrResult[$key] = [
-            'status' => 'E',
+            'status' => enuAlertResultStatus::Error,
             // 'at' => $expNow,
           ];
         }
 
         //-- sms -----
         try {
-          $key = 'S';
+          $key = enuAlertTemplateMedia::Sms;
 
           if (in_array($alertModel->alertTemplate->altMedia, [$key, 'A'])
-              && (($alrResult[$key]['status'] ?? 'N') != 'S')
+              && (($alrResult[$key]['status'] ?? enuAlertResultStatus::New) != enuAlertResultStatus::Sent)
           ) {
             if (empty($alertID))
 							echo "    Send Sms to " . $alertModel->alrTarget . ": ";
@@ -240,7 +242,7 @@ SQL;
 							echo "OK. ref: " . $refID . "\n";
 
             $alrResult[$key] = [
-              'status' => 'S',
+              'status' => enuAlertResultStatus::Sent,
               'ref-id' => $refID,
               'sent-at' => $now,
             ];
@@ -252,7 +254,7 @@ SQL;
           ++$errorCount;
 
           $alrResult[$key] = [
-            'status' => 'E',
+            'status' => enuAlertResultStatus::Error,
             // 'at' => $expNow,
           ];
         }
@@ -265,23 +267,23 @@ SQL;
         $alertModel->alrLastTryAt = $expNow;
         $alertModel->alrSentAt    = ($errorCount == 0 ? $expNow : null);
         $alertModel->alrResult    = empty($alrResult) ? null : $alrResult;
-        $alertModel->alrStatus    = ($errorCount == 0 ? enuAlertStatus::SENT : enuAlertStatus::ERROR);
+        $alertModel->alrStatus    = ($errorCount == 0 ? enuAlertStatus::Sent : enuAlertStatus::Error);
         $alertModel->save();
 
-        if ($alertModel->alrStatus == enuAlertStatus::SENT) {
+        if ($alertModel->alrStatus == enuAlertStatus::Sent) {
           $qry = '';
 
           if (empty($alertModel->alrApprovalRequestID) == false) {
             $qry = <<<SQL
        UPDATE tbl_AAA_ApprovalRequest
-          SET aprStatus = {$fnGetConst(enuApprovalRequestStatus::SENT)}
+          SET aprStatus = {$fnGetConst(enuApprovalRequestStatus::Sent)}
             , aprSentAt = NOW()
         WHERE aprID = {$alertModel->alrApprovalRequestID}
 SQL;
           } else if (empty($alertModel->alrForgotPasswordRequestID) == false) {
             $qry = <<<SQL
      UPDATE tbl_AAA_ForgotPasswordRequest
-        SET fprStatus = {$fnGetConst(enuForgotPasswordRequestStatus::SENT)}
+        SET fprStatus = {$fnGetConst(enuForgotPasswordRequestStatus::Sent)}
           , fprSentAt = NOW()
       WHERE fprID = {$alertModel->alrForgotPasswordRequestID}
 SQL;

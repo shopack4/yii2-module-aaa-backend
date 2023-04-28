@@ -5,6 +5,7 @@
 
 namespace shopack\aaa\backend\models;
 
+use phpDocumentor\Reflection\DocBlock\Tag\AuthorTag;
 use Yii;
 use shopack\aaa\backend\classes\AAAActiveRecord;
 use yii\db\Expression;
@@ -14,10 +15,12 @@ use yii\web\UnauthorizedHttpException;
 use yii\web\UnprocessableEntityHttpException;
 use shopack\aaa\backend\models\UserModel;
 use shopack\aaa\backend\models\AlertModel;
+use shopack\aaa\common\enums\enuAlertStatus;
 use shopack\base\backend\helpers\GeneralHelper;
 use shopack\aaa\common\enums\enuForgotPasswordRequestKeyType;
 use shopack\aaa\common\enums\enuForgotPasswordRequestAlertType;
 use shopack\aaa\common\enums\enuForgotPasswordRequestStatus;
+use shopack\aaa\common\enums\enuUserStatus;
 
 class ForgotPasswordRequestModel extends AAAActiveRecord
 {
@@ -47,7 +50,7 @@ class ForgotPasswordRequestModel extends AAAActiveRecord
   //     ['fprApplyAt', 'safe'],
 
   //     ['fprStatus', 'string', 'max' => 1],
-  //     ['fprStatus', 'default', 'value' => enuForgotPasswordRequestStatus::NEW],
+  //     ['fprStatus', 'default', 'value' => enuForgotPasswordRequestStatus::New],
 
   //     ['fprCreatedAt', 'safe'],
   //     // ['fprCreatedBy', 'integer'],
@@ -91,6 +94,8 @@ class ForgotPasswordRequestModel extends AAAActiveRecord
     $firstName = null,
     $lastName = null
   ) {
+    $fnGetConst = function($value) { return "'{$value}'"; };
+
     list ($normalizedInput, $inputType) = AuthHelper::checkLoginPhrase($emailOrMobile, false);
 
     // if ($inputType != $type)
@@ -108,7 +113,7 @@ class ForgotPasswordRequestModel extends AAAActiveRecord
               ON fpr.fprID = alr.alrForgotPasswordRequestID
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
@@ -121,7 +126,7 @@ SQLSTR;
           UPDATE {$forgotPasswordRequestTableName} fpr
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET fprStatus = 'E'
+             SET fprStatus = {$fnGetConst(enuForgotPasswordRequestStatus::Expired)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
@@ -145,7 +150,7 @@ SQLSTR;
       ])
       // ->andWhere(['fprCode' => $code])
       ->andWhere(['in', 'fprStatus', [
-        enuForgotPasswordRequestStatus::NEW, enuForgotPasswordRequestStatus::SENT] ])
+        enuForgotPasswordRequestStatus::New, enuForgotPasswordRequestStatus::Sent] ])
       ->limit(2)
       // ->asArray()
       ->all();
@@ -157,12 +162,12 @@ SQLSTR;
               ON fpr.fprID = alr.alrForgotPasswordRequestID
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Error)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
                  )
-             AND fprStatus IN ('N', 'S')
+             AND fprStatus IN ({$fnGetConst(enuForgotPasswordRequestStatus::New)}, {$fnGetConst(enuForgotPasswordRequestStatus::Sent)})
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
 
@@ -170,12 +175,12 @@ SQLSTR;
           UPDATE {$forgotPasswordRequestTableName} fpr
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET fprStatus = 'E'
+             SET fprStatus = {$fnGetConst(enuForgotPasswordRequestStatus::Expired)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
                  )
-             AND fprStatus IN ('N', 'S')
+             AND fprStatus IN ({$fnGetConst(enuForgotPasswordRequestStatus::New)}, {$fnGetConst(enuForgotPasswordRequestStatus::Sent)})
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
     }
@@ -194,7 +199,7 @@ SQLSTR;
       }
 
       if ($forgotPasswordRequestModel->IsExpired) {
-        $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::EXPIRED;
+        $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::Expired;
         $forgotPasswordRequestModel->save();
 
         $forgotPasswordRequestModel = null;
@@ -202,7 +207,7 @@ SQLSTR;
         $cfgPath = implode('.', [
           'AAA',
           'forgotPasswordRequest',
-          $inputType == 'E' ? 'email' : 'mobile',
+          $inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile',
           'resend-ttl'
         ]);
         $resendTTL = ArrayHelper::getValue($settings, $cfgPath, 120);
@@ -220,8 +225,8 @@ SQLSTR;
 
     if (empty($userID)) {
       $userModel = UserModel::find()
-        ->where(['usr' . ($inputType == 'E' ? 'Email' : 'Mobile') => $normalizedInput])
-        ->andWhere("usrStatus != 'R'")
+        ->andWhere(['usr' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'Email' : 'Mobile') => $normalizedInput])
+        ->andWhere(['<>', 'usrStatus', enuUserStatus::Removed])
         ->one();
 
       if (!$userModel)
@@ -238,9 +243,9 @@ SQLSTR;
     if (empty($code)) {
       $codeIsNew = true;
 
-      if ($inputType == enuForgotPasswordRequestKeyType::EMAIL)
+      if ($inputType == enuForgotPasswordRequestKeyType::Email)
         $code = Yii::$app->security->generateRandomString() . '_' . time();
-      else if ($inputType == enuForgotPasswordRequestKeyType::MOBILE)
+      else if ($inputType == enuForgotPasswordRequestKeyType::Mobile)
         $code = strval(rand(123456, 987654));
       else
         throw new UnauthorizedHttpException("invalid input type {$inputType}");
@@ -248,7 +253,7 @@ SQLSTR;
       $cfgPath = implode('.', [
         'AAA',
         'forgotPasswordRequest',
-        $inputType == 'E' ? 'email' : 'mobile',
+        $inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile',
         'expire-ttl'
       ]);
       $expireTTL = ArrayHelper::getValue($settings, $cfgPath, 20 * 60);
@@ -268,7 +273,7 @@ SQLSTR;
 
       $qry =<<<SQLSTR
           UPDATE {$alertTableName}
-             SET alrStatus = 'R'
+             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
            WHERE alrForgotPasswordRequestID = '{$forgotPasswordRequestModel->fprID}'
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
@@ -286,11 +291,11 @@ SQLSTR;
       'code' => $code,
     ];
 
-    if ($inputType == enuForgotPasswordRequestKeyType::EMAIL) {
-      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::REQUEST_BY_EMAIL;
+    if ($inputType == enuForgotPasswordRequestKeyType::Email) {
+      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::RequestByEmail;
       $alrInfo['email'] = $normalizedInput;
     } else {
-      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::REQUEST_BY_MOBILE;
+      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::RequestByMobile;
       $alrInfo['mobile'] = $normalizedInput;
     }
     $alertModel->alrInfo = $alrInfo;
@@ -319,13 +324,13 @@ SQLSTR;
       ])
       ->andWhere(['fprCode' => $code])
       ->andWhere(['in', 'fprStatus', [
-        enuForgotPasswordRequestStatus::NEW, enuForgotPasswordRequestStatus::SENT, enuForgotPasswordRequestStatus::APPLIED] ])
+        enuForgotPasswordRequestStatus::New, enuForgotPasswordRequestStatus::Sent, enuForgotPasswordRequestStatus::Applied] ])
       ->limit(2)
       // ->asArray()
       ->all();
 
     if (empty($models))
-      throw new UnauthorizedHttpException('invalid ' . ($inputType == 'E' ? 'email' : 'mobile') . ' and/or code');
+      throw new UnauthorizedHttpException('invalid ' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'email' : 'mobile') . ' and/or code');
 
     if (count($models) > 1)
       throw new UnauthorizedHttpException('more than one request found');
@@ -339,20 +344,20 @@ SQLSTR;
     //validate
     //------------------------------
     if ($forgotPasswordRequestModel->fprRequestedBy != $inputType) {
-      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::EXPIRED;
+      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::Expired;
       $forgotPasswordRequestModel->save();
 
       throw new UnauthorizedHttpException('incorrect key type');
     }
 
-    if ($forgotPasswordRequestModel->fprStatus == enuForgotPasswordRequestStatus::APPLIED)
+    if ($forgotPasswordRequestModel->fprStatus == enuForgotPasswordRequestStatus::Applied)
       throw new UnauthorizedHttpException('this code applied before');
 
-    if ($forgotPasswordRequestModel->fprStatus != enuForgotPasswordRequestStatus::SENT)
+    if ($forgotPasswordRequestModel->fprStatus != enuForgotPasswordRequestStatus::Sent)
       throw new UnauthorizedHttpException('code not sent to the client');
 
     if ($forgotPasswordRequestModel->IsExpired) {
-      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::EXPIRED;
+      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::Expired;
       $forgotPasswordRequestModel->save();
 
       throw new UnauthorizedHttpException('code expired');
@@ -363,7 +368,7 @@ SQLSTR;
     $transaction = static::getDb()->beginTransaction();
     try {
       //1: fpr
-      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::APPLIED;
+      $forgotPasswordRequestModel->fprStatus = enuForgotPasswordRequestStatus::Applied;
       $forgotPasswordRequestModel->fprApplyAt = new Expression('NOW()');
       if ($forgotPasswordRequestModel->save() == false)
         throw new UnprocessableEntityHttpException("could not save forgot password request\n" . implode("\n", $forgotPasswordRequestModel->getFirstErrors()));
@@ -384,13 +389,13 @@ SQLSTR;
         'lastName' => $forgotPasswordRequestModel->user->usrLastName,
       ];
 
-      if ($forgotPasswordRequestModel->fprRequestedBy == enuForgotPasswordRequestKeyType::EMAIL) {
+      if ($forgotPasswordRequestModel->fprRequestedBy == enuForgotPasswordRequestKeyType::Email) {
         $alertModel->alrTarget  = $forgotPasswordRequestModel->user->usrEmail;
-        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::CHANGED_BY_EMAIL;
+        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::ChangedByEmail;
         $alrInfo['email'] = $alertModel->alrTarget;
       } else {
         $alertModel->alrTarget  = $forgotPasswordRequestModel->user->usrMobile;
-        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::CHANGED_BY_MOBILE;
+        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::ChangedByMobile;
         $alrInfo['mobile'] = $alertModel->alrTarget;
       }
       $alertModel->alrInfo = $alrInfo;
