@@ -22,7 +22,7 @@ class UserModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuUserStatus::Removed;
-    $this->softdelete_StatusField    = 'usrStatus';
+    // $this->softdelete_StatusField    = 'usrStatus';
     $this->softdelete_RemovedAtField = 'usrRemovedAt';
     $this->softdelete_RemovedByField = 'usrRemovedBy';
   }
@@ -79,15 +79,20 @@ class UserModel extends AAAActiveRecord
     ];
   }
 
-  public static function find()
+  public static function find($withFile = true)
   {
     $query = parent::find();
 
+    // $tableName = 'user'; //self::tableName();
+
     $query
+      // ->alias($tableName)
       ->select(self::selectableColumns())
       ->addSelect(new \yii\db\Expression("usrPasswordHash IS NOT NULL AND usrPasswordHash != '' AS hasPassword"))
-      ->with('imageFile')
     ;
+
+    if ($withFile)
+      $query->joinWith('imageFile');
 
     return $query;
   }

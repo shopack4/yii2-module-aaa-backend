@@ -7,13 +7,13 @@ namespace shopack\aaa\backend\models;
 
 use shopack\aaa\backend\classes\AAAActiveRecord;
 
-class AlertTemplateModel extends AAAActiveRecord
+class MessageTemplateModel extends AAAActiveRecord
 {
-	use \shopack\aaa\common\models\AlertTemplateModelTrait;
+	use \shopack\aaa\common\models\MessageTemplateModelTrait;
 
 	public static function tableName()
 	{
-		return '{{%AAA_AlertTemplate}}';
+		return '{{%AAA_MessageTemplate}}';
 	}
 
 	public function behaviors()
@@ -21,10 +21,10 @@ class AlertTemplateModel extends AAAActiveRecord
 		return [
 			[
 				'class' => \shopack\base\common\behaviors\RowDatesAttributesBehavior::class,
-				'createdAtAttribute' => 'altCreatedAt',
-				'createdByAttribute' => 'altCreatedBy',
-				'updatedAtAttribute' => 'altUpdatedAt',
-				'updatedByAttribute' => 'altUpdatedBy',
+				'createdAtAttribute' => 'mstCreatedAt',
+				'createdByAttribute' => 'mstCreatedBy',
+				'updatedAtAttribute' => 'mstUpdatedAt',
+				'updatedByAttribute' => 'mstUpdatedBy',
 			],
 		];
 	}

@@ -15,10 +15,10 @@ use shopack\aaa\backend\classes\AAAActiveRecord;
 use shopack\base\backend\helpers\AuthHelper;
 use shopack\base\backend\helpers\GeneralHelper;
 use shopack\aaa\backend\models\UserModel;
-use shopack\aaa\backend\models\AlertModel;
-use shopack\aaa\common\enums\enuAlertStatus;
+use shopack\aaa\backend\models\MessageModel;
+use shopack\aaa\common\enums\enuMessageStatus;
 use shopack\aaa\common\enums\enuApprovalRequestKeyType;
-use shopack\aaa\common\enums\enuApprovalRequestAlertType;
+use shopack\aaa\common\enums\enuApprovalRequestMessageType;
 use shopack\aaa\common\enums\enuApprovalRequestStatus;
 use shopack\aaa\common\enums\enuUserStatus;
 
@@ -132,15 +132,16 @@ class ApprovalRequestModel extends AAAActiveRecord
     //flag expired
     //-----------------------------------
     $approvalRequestTableName = static::tableName();
-    $alertTableName = AlertModel::tableName();
+    $messageTableName = MessageModel::tableName();
 
     $qry =<<<SQLSTR
-          UPDATE {$alertTableName} alr
+          UPDATE {$messageTableName} msg
       INNER JOIN {$approvalRequestTableName} apr
-              ON apr.aprID = alr.alrApprovalRequestID
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
+              ON apr.aprID = msg.msgApprovalRequestID
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Removed)}
            WHERE aprKey = '{$normalizedInput}'
              AND aprExpireAt <= NOW()
+             AND msgStatus != {$fnGetConst(enuMessageStatus::Sent)}
 SQLSTR;
     static::getDb()->createCommand($qry)->execute();
 
@@ -149,6 +150,7 @@ SQLSTR;
              SET aprStatus = {$fnGetConst(enuApprovalRequestStatus::Expired)}
            WHERE aprKey = '{$normalizedInput}'
              AND aprExpireAt <= NOW()
+             AND aprStatus != {$fnGetConst(enuApprovalRequestStatus::Applied)}
 SQLSTR;
     static::getDb()->createCommand($qry)->execute();
 
@@ -171,10 +173,10 @@ SQLSTR;
 
     if (empty($models) == false && count($models) > 1) {
       $qry =<<<SQLSTR
-          UPDATE {$alertTableName} alr
+          UPDATE {$messageTableName} msg
       INNER JOIN {$approvalRequestTableName} apr
-              ON apr.aprID = alr.alrApprovalRequestID
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
+              ON apr.aprID = msg.msgApprovalRequestID
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Removed)}
            WHERE aprKey = '{$normalizedInput}'
              AND aprStatus IN ({$fnGetConst(enuApprovalRequestStatus::New)}, {$fnGetConst(enuApprovalRequestStatus::Sent)})
 SQLSTR;
@@ -237,7 +239,7 @@ SQLSTR;
     if (empty($userID)) {
       $userModel = UserModel::find()
         ->andWhere(['usr' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'Email' : 'Mobile') => $normalizedInput])
-        ->andWhere(['<>', 'usrStatus', enuUserStatus::Removed])
+        ->andWhere(['!=', 'usrStatus', enuUserStatus::Removed])
         ->one();
 
       if (!$userModel && $forLogin == false)
@@ -286,19 +288,20 @@ SQLSTR;
         throw new UnprocessableEntityHttpException("error in updating approval request\n" . implode("\n", $approvalRequestModel->getFirstErrors()));
 
       $qry =<<<SQLSTR
-          UPDATE {$alertTableName}
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
-           WHERE alrApprovalRequestID = '{$approvalRequestModel->aprID}'
+          UPDATE {$messageTableName}
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Removed)}
+           WHERE msgApprovalRequestID = '{$approvalRequestModel->aprID}'
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
     }
 
-    $alertModel = new AlertModel();
-    $alertModel->alrUserID  = $userID;
-    $alertModel->alrApprovalRequestID = $approvalRequestModel->aprID;
-    $alertModel->alrTarget  = $normalizedInput;
+    $messageModel = new MessageModel();
+    $messageModel->msgIssuer  = 'aaa:approvalRequest:request';
+    $messageModel->msgUserID  = $userID;
+    $messageModel->msgApprovalRequestID = $approvalRequestModel->aprID;
+    $messageModel->msgTarget  = $normalizedInput;
 
-    $alrInfo = [
+    $msgInfo = [
       'gender' => $gender,
       'firstName' => $firstName,
       'lastName' => $lastName,
@@ -306,21 +309,21 @@ SQLSTR;
     ];
 
     if ($inputType == enuApprovalRequestKeyType::Email) {
-      $alertModel->alrTypeKey = ($forLogin
-        ? enuApprovalRequestAlertType::EmailApprovalForLogin
-        : enuApprovalRequestAlertType::EmailApproval);
-      $alrInfo['email'] = $normalizedInput;
+      $messageModel->msgTypeKey = ($forLogin
+        ? enuApprovalRequestMessageType::EmailApprovalForLogin
+        : enuApprovalRequestMessageType::EmailApproval);
+      $msgInfo['email'] = $normalizedInput;
     } else {
-      $alertModel->alrTypeKey = ($forLogin
-        ? enuApprovalRequestAlertType::MobileApprovalForLogin
-        : enuApprovalRequestAlertType::MobileApproval);
-      $alrInfo['mobile'] = $normalizedInput;
+      $messageModel->msgTypeKey = ($forLogin
+        ? enuApprovalRequestMessageType::MobileApprovalForLogin
+        : enuApprovalRequestMessageType::MobileApproval);
+      $msgInfo['mobile'] = $normalizedInput;
     }
 
-    $alertModel->alrInfo = $alrInfo;
+    $messageModel->msgInfo = $msgInfo;
 
-    if ($alertModel->save() == false)
-      throw new UnprocessableEntityHttpException("could not save alert\n" . implode("\n", $alertModel->getFirstErrors()));
+    if ($messageModel->save() == false)
+      throw new UnprocessableEntityHttpException("could not save message\n" . implode("\n", $messageModel->getFirstErrors()));
 
     return [
       'message' => $codeIsNew ? 'CODE_SENT' : 'CODE_RESENT',
@@ -388,7 +391,7 @@ SQLSTR;
   {
     list ($normalizedInput, $inputType) = AuthHelper::checkLoginPhrase($emailOrMobile, false);
 
-    $alertTableName = AlertModel::tableName();
+    $messageTableName = MessageModel::tableName();
 
     //find current
     //------------------------------
@@ -445,11 +448,11 @@ SQLSTR;
     $transaction = static::getDb()->beginTransaction();
     try {
       //1: user
-      $sendAlert = null;
+      $sendMessage = null;
       $userModel = $approvalRequestModel->user;
       if ($userModel == null) {
         $userModel = new UserModel();
-        $sendAlert = false;
+        $sendMessage = false;
       }
 
       $userModel->bypassRequestApprovalCode = true;
@@ -460,8 +463,8 @@ SQLSTR;
             || ($userModel->usrEmail != $approvalRequestModel->aprKey)
         ) {
           $userModel->usrEmail = $approvalRequestModel->aprKey;
-          if ($sendAlert === null)
-            $sendAlert = true;
+          if ($sendMessage === null)
+            $sendMessage = true;
         }
       } else if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::Mobile) {
         $userModel->usrMobileApprovedAt = new Expression('NOW()');
@@ -469,8 +472,8 @@ SQLSTR;
             || ($userModel->usrMobile != $approvalRequestModel->aprKey)
         ) {
           $userModel->usrMobile = $approvalRequestModel->aprKey;
-          if ($sendAlert === null)
-            $sendAlert = true;
+          if ($sendMessage === null)
+            $sendMessage = true;
         }
       }
 
@@ -485,41 +488,42 @@ SQLSTR;
       if ($approvalRequestModel->save() == false)
         throw new UnprocessableEntityHttpException("could not save approval request\n" . implode("\n", $approvalRequestModel->getFirstErrors()));
 
-      //3: old alert
+      //3: old message
       $qry =<<<SQLSTR
-          UPDATE {$alertTableName}
-             SET alrUserID = :UserID
-           WHERE alrApprovalRequestID = '{$approvalRequestModel->aprID}'
-             AND alrUserID IS NULL
+          UPDATE {$messageTableName}
+             SET msgUserID = :UserID
+           WHERE msgApprovalRequestID = '{$approvalRequestModel->aprID}'
+             AND msgUserID IS NULL
 SQLSTR;
       static::getDb()->createCommand($qry, [
         ':UserID' => $userModel->usrID,
       ])->execute();
 
-      //4: send alert '[email|mobile]Approved'
-      if ($sendAlert === true) {
-        $alertModel = new AlertModel();
-        $alertModel->alrUserID  = $userModel->usrID;
-        // $alertModel->alrApprovalRequestID = null;
-        $alertModel->alrTarget  = $approvalRequestModel->aprKey;
+      //4: send message '[email|mobile]Approved'
+      if ($sendMessage === true) {
+        $messageModel = new MessageModel();
+        $messageModel->msgIssuer  = 'aaa:approvalRequest:accept';
+        $messageModel->msgUserID  = $userModel->usrID;
+        // $messageModel->msgApprovalRequestID = null;
+        $messageModel->msgTarget  = $approvalRequestModel->aprKey;
 
-        $alrInfo = [
+        $msgInfo = [
           'gender' => $userModel->usrGender,
           'firstName' => $userModel->usrFirstName,
           'lastName' => $userModel->usrLastName,
         ];
 
         if ($approvalRequestModel->aprKeyType == enuApprovalRequestKeyType::Email) {
-          $alertModel->alrTypeKey = enuApprovalRequestAlertType::EmailApproved;
-          $alrInfo['email'] = $approvalRequestModel->aprKey;
+          $messageModel->msgTypeKey = enuApprovalRequestMessageType::EmailApproved;
+          $msgInfo['email'] = $approvalRequestModel->aprKey;
         } else {
-          $alertModel->alrTypeKey = enuApprovalRequestAlertType::MobileApproved;
-          $alrInfo['mobile'] = $approvalRequestModel->aprKey;
+          $messageModel->msgTypeKey = enuApprovalRequestMessageType::MobileApproved;
+          $msgInfo['mobile'] = $approvalRequestModel->aprKey;
         }
-        $alertModel->alrInfo = $alrInfo;
+        $messageModel->msgInfo = $msgInfo;
 
-        if ($alertModel->save() == false)
-          throw new UnprocessableEntityHttpException("could not save alert\n" . implode("\n", $alertModel->getFirstErrors()));
+        if ($messageModel->save() == false)
+          throw new UnprocessableEntityHttpException("could not save message\n" . implode("\n", $messageModel->getFirstErrors()));
       }
 
       //

@@ -28,7 +28,7 @@ class SmsSendResult
 
 interface ISmsGateway
 {
-	public function getLineNumber();
+	// public function getLineNumber();
 
 	public function send(
 		$message,

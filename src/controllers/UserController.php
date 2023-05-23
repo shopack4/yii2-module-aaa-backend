@@ -43,16 +43,16 @@ class UserController extends BaseRestController
 	{
 		$filter = [];
 		if (PrivHelper::hasPriv('aaa/user/crud', '0100') == false)
-			$filter = ['usrID' => Yii::$app->user->identity->usrID];
+			$filter = ['usrID' => Yii::$app->user->id];
 
 		$searchModel = new UserModel;
 		$query = $searchModel::find()
 			// ->select(UserModel::selectableColumns())
-			->with('role')
-			->with('country')
-			->with('state')
-			->with('cityOrVillage')
-			->with('town')
+			->joinWith('role')
+			->joinWith('country')
+			->joinWith('state')
+			->joinWith('cityOrVillage')
+			->joinWith('town')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -70,17 +70,17 @@ class UserController extends BaseRestController
 	public function actionView($id)
 	{
 		if (PrivHelper::hasPriv('aaa/user/crud', '0100') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
 		$model = UserModel::find()
 			// ->select(UserModel::selectableColumns())
-			->with('role')
-			->with('country')
-			->with('state')
-			->with('cityOrVillage')
-			->with('town')
+			->joinWith('role')
+			->joinWith('country')
+			->joinWith('state')
+			->joinWith('cityOrVillage')
+			->joinWith('town')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -124,7 +124,7 @@ class UserController extends BaseRestController
 	public function actionUpdate($id)
 	{
 		if (PrivHelper::hasPriv('aaa/user/crud', '0010') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -149,7 +149,7 @@ class UserController extends BaseRestController
 	public function actionDelete($id)
 	{
 		if (PrivHelper::hasPriv('aaa/user/crud', '0001') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -208,7 +208,7 @@ class UserController extends BaseRestController
 	public function actionUpdateImage($id)
 	{
 		if (PrivHelper::hasPriv('aaa/user/crud', '0010') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 

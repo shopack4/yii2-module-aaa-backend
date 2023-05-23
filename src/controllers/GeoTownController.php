@@ -18,6 +18,12 @@ class GeoTownController extends BaseRestController
 	public function behaviors()
 	{
 		$behaviors = parent::behaviors();
+
+		$behaviors[BaseRestController::BEHAVIOR_AUTHENTICATOR]['except'] = [
+			'index',
+			'view',
+		];
+
 		return $behaviors;
 	}
 
@@ -32,7 +38,7 @@ class GeoTownController extends BaseRestController
 	public function actionIndex()
 	{
 		$filter = [];
-		PrivHelper::checkPriv('aaa/geo-town/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-town/crud', '0100');
 
 		$searchModel = new GeoTownModel;
 		$query = $searchModel::find()
@@ -53,7 +59,7 @@ class GeoTownController extends BaseRestController
 
 	public function actionView($id)
 	{
-		PrivHelper::checkPriv('aaa/geo-town/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-town/crud', '0100');
 
 		$model = GeoTownModel::find()
 			->select(GeoTownModel::selectableColumns())

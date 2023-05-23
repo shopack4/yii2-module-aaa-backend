@@ -15,12 +15,14 @@ use Ramsey\Uuid\Uuid;
 use shopack\base\common\helpers\Url;
 use shopack\aaa\backend\models\GatewayModel;
 use shopack\aaa\backend\models\WalletModel;
+use shopack\aaa\backend\models\VoucherModel;
 use shopack\aaa\common\enums\enuGatewayStatus;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\models\OnlinePaymentModel;
 use shopack\aaa\backend\models\WalletTransactionModel;
 use shopack\aaa\common\enums\enuOnlinePaymentStatus;
 use shopack\aaa\common\enums\enuVoucherType;
+use shopack\aaa\common\enums\enuVoucherStatus;
 
 class PaymentManager extends Component
 {
@@ -38,8 +40,10 @@ class PaymentManager extends Component
 			$walletID = $walletModel->walID;
 		}
 
+		$payAmount = $voucherModel->vchAmount - ($voucherModel->vchTotalPaid ?? 0);
+
 		//1: find gateway
-		$gatewayModel = $this->findBestPaymentGateway($gatewayType, $voucherModel->vchAmount);
+		$gatewayModel = $this->findBestPaymentGateway($gatewayType, $payAmount);
 		if ($gatewayModel == null)
 			throw new NotFoundHttpException('Payment gateway not found');
 
@@ -49,7 +53,7 @@ class PaymentManager extends Component
 		$onlinePaymentModel->onpUUID					= Uuid::uuid4()->toString();
 		$onlinePaymentModel->onpGatewayID			= $gatewayModel->gtwID;
 		$onlinePaymentModel->onpVoucherID			= $voucherModel->vchID;
-		$onlinePaymentModel->onpAmount				= $voucherModel->vchAmount;
+		$onlinePaymentModel->onpAmount				= $payAmount;
 		$onlinePaymentModel->onpCallbackUrl		= $callbackUrl;
 		$onlinePaymentModel->onpWalletID			= $walletID;
 		if ($onlinePaymentModel->save() == false)
@@ -89,8 +93,8 @@ class PaymentManager extends Component
 										JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_LAST_TRANSACTION_DATE)}') IS NOT NULL
 											AND JSON_UNQUOTE(JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_LAST_TRANSACTION_DATE)}')) = CURDATE()
 											AND JSON_CONTAINS_PATH(gtwUsages, 'one', '$.{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}')
-										, CAST(JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}') AS UNSIGNED) + {$voucherModel->vchAmount}
-										,{$voucherModel->vchAmount}
+										, CAST(JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}') AS UNSIGNED) + {$payAmount}
+										,{$payAmount}
 									)
 								)
 							)
@@ -178,7 +182,7 @@ SQL;
 				],
 				"tmptbl_inner.gtwID = {$gatewayTableName}.gtwID"
 			)
-			// ->andWhere("{$gatewayTableName}gtwStatus != '{$fnGetConst(enuGatewayStatus::Removed)}'")
+			->andWhere(['gtwStatus' => enuGatewayStatus::Active])
 			// ->andWhere(['IN', "{$gatewayTableName}gtwPluginName", $gatewayNames])
 			// ->andWhere("LOWER({$gatewayTableName}.pgwAllowedDomainName) = 'dev.test'")
 			->orderBy([
@@ -191,7 +195,10 @@ SQL;
 		return $gatewayModel;
 	}
 
-	public function approveOnlinePayment($paymentkey)
+	/**
+	 * $pgwResponse: array|null response data back from payment gateway
+	 */
+	public function approveOnlinePayment($paymentkey, $pgwResponse) : OnlinePaymentModel
 	{
 		$onlinePaymentModel = OnlinePaymentModel::find()
 			->with('gateway')
@@ -208,13 +215,33 @@ SQL;
 			throw new UnprocessableEntityHttpException('This payment is not in pending state.');
 
 		//1: verify and settle via gateway
-		$this->verifyOnlinePayment($onlinePaymentModel);
+		try {
+			$this->verifyOnlinePayment($onlinePaymentModel, $pgwResponse);
+
+		} catch (\Throwable $th) {
+			if ($onlinePaymentModel->voucher->vchType != enuVoucherType::Basket) {
+				$fnGetConst = function($value) { return $value; };
+				$voucherTableName = VoucherModel::tableName();
+
+				$qry =<<<SQL
+					UPDATE	{$voucherTableName}
+						 SET	vchStatus = '{$fnGetConst(enuVoucherStatus::Error)}'
+					 WHERE	vchID = {$onlinePaymentModel->onpVoucherID}
+SQL;
+				$rowsCount = Yii::$app->db->createCommand($qry)->execute();
+			}
+
+			return $onlinePaymentModel;
+		}
 
     //start transaction
     $transaction = Yii::$app->db->beginTransaction();
 
+		$walletTableName = WalletModel::tableName();
+		$voucherTableName = VoucherModel::tableName();
+
 		try {
-			//2: add to wallet
+			//2.1: create wallet transaction
 			$walletTransactionModel = new WalletTransactionModel();
 			$walletTransactionModel->wtrWalletID				= $onlinePaymentModel->onpWalletID;
 			$walletTransactionModel->wtrVoucherID				= $onlinePaymentModel->onpVoucherID;
@@ -222,29 +249,61 @@ SQL;
 			$walletTransactionModel->wtrAmount					= $onlinePaymentModel->onpAmount;
 			$walletTransactionModel->save();
 
-			$walletTableName = WalletModel::tableName();
+			//2.2: add to the wallet amount
 			$qry =<<<SQL
 				UPDATE	{$walletTableName}
 					 SET	walRemainedAmount = walRemainedAmount + {$onlinePaymentModel->onpAmount}
-				 WHERE	walID = {$onlinePaymentModel->onpWalletID}
+				 WHERE	walID = {$walletTransactionModel->wtrWalletID}
 SQL;
 			$rowsCount = Yii::$app->db->createCommand($qry)->execute();
 
-			//3: if basket
+			//save to the voucher
 			if ($onlinePaymentModel->voucher->vchType == enuVoucherType::Basket) {
+				//2.1: create decrease wallet transaction
+				$walletTransactionModel = new WalletTransactionModel();
+				$walletTransactionModel->wtrWalletID	= $onlinePaymentModel->onpWalletID;
+				$walletTransactionModel->wtrVoucherID	= $onlinePaymentModel->onpVoucherID;
+				$walletTransactionModel->wtrAmount		= (-1) * $onlinePaymentModel->onpAmount;
+				$walletTransactionModel->save();
 
+				//2.2: decrease wallet amount
+				$qry =<<<SQL
+				UPDATE	{$walletTableName}
+					 SET	walRemainedAmount = walRemainedAmount - {$onlinePaymentModel->onpAmount}
+				 WHERE	walID = {$walletTransactionModel->wtrWalletID}
+SQL;
+				$rowsCount = Yii::$app->db->createCommand($qry)->execute();
+
+				$field = 'vchPaidByWallet';
+			} else {
+				$field = 'vchOnlinePaid';
+			}
+
+			$qry =<<<SQL
+			UPDATE	{$voucherTableName}
+					SET	{$field} = IFNULL({$field}, 0) + {$onlinePaymentModel->onpAmount}
+						,	vchTotalPaid = IFNULL(vchTotalPaid, 0) + {$onlinePaymentModel->onpAmount}
+				WHERE	vchID = {$onlinePaymentModel->onpVoucherID}
+SQL;
+			$rowsCount = Yii::$app->db->createCommand($qry)->execute();
+			$onlinePaymentModel->voucher->refresh();
+
+			if ($onlinePaymentModel->voucher->vchType == enuVoucherType::Basket
+				&& $onlinePaymentModel->voucher->vchAmount == $onlinePaymentModel->voucher->vchTotalPaid ?? 0
+			) {
+				$onlinePaymentModel->voucher->vchStatus = enuVoucherStatus::Settled;
+				$onlinePaymentModel->voucher->save();
 			}
 
       //commit
       $transaction->commit();
 
-			//
 			return $onlinePaymentModel;
 
     } catch (\Exception $e) {
       $transaction->rollBack();
       throw $e;
-    } catch (\Throwable $e) {
+		} catch (\Throwable $e) {
       $transaction->rollBack();
       throw $e;
     }
@@ -252,14 +311,15 @@ SQL;
 	}
 
 	//verify and settle online payment
-	private function verifyOnlinePayment($onlinePaymentModel)
+	private function verifyOnlinePayment($onlinePaymentModel, $pgwResponse)
 	{
 		$gatewayClass = $onlinePaymentModel->gateway->getGatewayClass();
 
 		try {
-			$response = $gatewayClass->verify($onlinePaymentModel->gateway, $onlinePaymentModel);
+			list ($result, $rrn) = $gatewayClass->verify($onlinePaymentModel->gateway, $onlinePaymentModel, $pgwResponse);
 
-			$onlinePaymentModel->onpResult = (array)$response;
+			$onlinePaymentModel->onpRRN = $rrn;
+			$onlinePaymentModel->onpResult = $result;
 			$onlinePaymentModel->onpStatus = enuOnlinePaymentStatus::Paid;
 			if ($onlinePaymentModel->save() == false) {
 				//todo: ???

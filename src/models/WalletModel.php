@@ -18,7 +18,7 @@ class WalletModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuWalletStatus::Removed;
-    $this->softdelete_StatusField    = 'walStatus';
+    // $this->softdelete_StatusField    = 'walStatus';
     $this->softdelete_RemovedAtField = 'walRemovedAt';
     $this->softdelete_RemovedByField = 'walRemovedBy';
 	}
@@ -46,18 +46,18 @@ class WalletModel extends AAAActiveRecord
 		if (Yii::$app->user->isGuest || empty($_GET['justForMe']))
 			return false;
 
-		//todo: replace loginc with `INSERT IGNORE`
+		//todo: replace logic with `INSERT IGNORE`
 
 		$model = WalletModel::find()
-			->andWhere(['walOwnerUserID' => Yii::$app->user->identity->usrID])
+			->andWhere(['walOwnerUserID' => Yii::$app->user->id])
 			->andWhere(['walIsDefault' => true])
-			->andWhere(['<>', 'walStatus', enuWalletStatus::Removed])
+			->andWhere(['!=', 'walStatus', enuWalletStatus::Removed])
 			->one();
 
 		if ($model == null) {
 			$model = new WalletModel();
 
-			$model->walOwnerUserID		= Yii::$app->user->identity->usrID;
+			$model->walOwnerUserID		= Yii::$app->user->id;
 			$model->walName						= 'Default';
 			$model->walIsDefault			= true;
 			$model->walRemainedAmount	= 0;

@@ -16,7 +16,7 @@ class UploadQueueModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuUploadQueueStatus::Removed;
-    $this->softdelete_StatusField    = 'uquStatus';
+    // $this->softdelete_StatusField    = 'uquStatus';
     $this->softdelete_RemovedAtField = 'uquRemovedAt';
     $this->softdelete_RemovedByField = 'uquRemovedBy';
   }

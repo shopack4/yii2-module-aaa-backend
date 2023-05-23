@@ -6,30 +6,24 @@
 namespace shopack\aaa\backend\controllers;
 
 use Yii;
-use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\UnprocessableEntityHttpException;
 use yii\data\ActiveDataProvider;
 use shopack\base\backend\controller\BaseRestController;
 use shopack\base\backend\helpers\PrivHelper;
-use shopack\aaa\backend\models\VoucherModel;
+use shopack\aaa\backend\models\MessageModel;
 
-class VoucherController extends BaseRestController
+class MessageController extends BaseRestController
 {
 	public function behaviors()
 	{
 		$behaviors = parent::behaviors();
-
-		// $behaviors[BaseRestController::BEHAVIOR_AUTHENTICATOR]['except'] = [
-		// 	'callback',
-		// ];
-
 		return $behaviors;
 	}
 
 	protected function findModel($id)
 	{
-		if (($model = VoucherModel::findOne($id)) !== null)
+		if (($model = MessageModel::findOne($id)) !== null)
 			return $model;
 
 		throw new NotFoundHttpException('The requested item not exist.');
@@ -38,13 +32,12 @@ class VoucherController extends BaseRestController
 	public function actionIndex()
 	{
 		$filter = [];
-		if (PrivHelper::hasPriv('aaa/voucher/crud', '0100') == false)
-			$filter = ['vchOwnerUserID' => Yii::$app->user->id];
+		PrivHelper::checkPriv('aaa/message/crud', '0100');
 
-		$searchModel = new VoucherModel;
+		$searchModel = new MessageModel;
 		$query = $searchModel::find()
-			->select(VoucherModel::selectableColumns())
-			->joinWith('owner')
+			->select(MessageModel::selectableColumns())
+			->joinWith('user')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -61,33 +54,27 @@ class VoucherController extends BaseRestController
 
 	public function actionView($id)
 	{
-		$model = VoucherModel::find()
-			->select(VoucherModel::selectableColumns())
-			->joinWith('owner')
+		PrivHelper::checkPriv('aaa/message/crud', '0100');
+
+		$model = MessageModel::find()
+			->select(MessageModel::selectableColumns())
+			->joinWith('user')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
-			->where(['vchID' => $id])
+			->where(['msgID' => $id])
 			->asArray()
 			->one()
 		;
 
-		if ((PrivHelper::hasPriv('aaa/voucher/crud', '0100') == false)
-			&& ($model != null)
-			&& ($model['vchOwnerUserID'] != Yii::$app->user->id)
-		) {
-			throw new ForbiddenHttpException('access denied');
-		}
-
 		return $this->modelToResponse($model);
 	}
 
-	/*
 	public function actionCreate()
 	{
-		PrivHelper::checkPriv('aaa/voucher/crud', '1000');
+		PrivHelper::checkPriv('aaa/message/crud', '1000');
 
-		$model = new VoucherModel();
+		$model = new MessageModel();
 		if ($model->load(Yii::$app->request->getBodyParams(), '') == false)
 			throw new NotFoundHttpException("parameters not provided");
 
@@ -104,23 +91,19 @@ class VoucherController extends BaseRestController
 		return [
 			// 'result' => [
 				// 'message' => 'created',
-				'vchID' => $model->vchID,
-				'vchStatus' => $model->vchStatus,
-				'vchCreatedAt' => $model->vchCreatedAt,
-				'vchCreatedBy' => $model->vchCreatedBy,
+				'msgID' => $model->msgID,
+				// 'msgStatus' => $model->msgStatus,
+				'msgCreatedAt' => $model->msgCreatedAt,
+				'msgCreatedBy' => $model->msgCreatedBy,
 			// ],
 		];
 	}
 
 	public function actionUpdate($id)
 	{
-		if (PrivHelper::hasPriv('aaa/voucher/crud', '0010') == false) {
-			if (Yii::$app->user->id != $id)
-				throw new ForbiddenHttpException('access denied');
-		}
+		PrivHelper::checkPriv('aaa/message/crud', '0010');
 
 		$model = $this->findModel($id);
-
 		if ($model->load(Yii::$app->request->getBodyParams(), '') == false)
 			throw new NotFoundHttpException("parameters not provided");
 
@@ -130,37 +113,32 @@ class VoucherController extends BaseRestController
 		return [
 			// 'result' => [
 				// 'message' => 'updated',
-				'vchID' => $model->vchID,
-				'vchStatus' => $model->vchStatus,
-				'vchUpdatedAt' => $model->vchUpdatedAt,
-				'vchUpdatedBy' => $model->vchUpdatedBy,
+				'msgID' => $model->msgID,
+				// 'msgStatus' => $model->msgStatus,
+				'msgUpdatedAt' => $model->msgUpdatedAt,
+				'msgUpdatedBy' => $model->msgUpdatedBy,
 			// ],
 		];
 	}
 
 	public function actionDelete($id)
 	{
-		if (PrivHelper::hasPriv('aaa/voucher/crud', '0001') == false) {
-			if (Yii::$app->user->id != $id)
-				throw new ForbiddenHttpException('access denied');
-		}
+		PrivHelper::checkPriv('aaa/message/crud', '0001');
 
 		$model = $this->findModel($id);
-
-		if ($model->delete() === false)
+		if ($model->delete() == false)
 			throw new UnprocessableEntityHttpException(implode("\n", $model->getFirstErrors()));
 
 		return [
 			// 'result' => [
 				// 'message' => 'deleted',
-				'vchID' => $model->vchID,
-				'vchStatus' => $model->vchStatus,
-				'vchRemovedAt' => $model->vchRemovedAt,
-				'vchRemovedBy' => $model->vchRemovedBy,
+				'msgID' => $model->msgID,
+				// 'msgStatus' => $model->msgStatus,
+				'msgRemovedAt' => $model->msgRemovedAt,
+				'msgRemovedBy' => $model->msgRemovedBy,
 			// ],
 		];
 	}
-	*/
 
 	public function actionOptions()
 	{

@@ -34,7 +34,7 @@ class ApprovalRequestController extends BaseRestController
 	{
 		$filter = [];
 		if (PrivHelper::hasPriv('aaa/approval-request/crud', '0100') == false)
-			$filter = ['aprUserID' => Yii::$app->user->identity->usrID];
+			$filter = ['aprUserID' => Yii::$app->user->id];
 
 		$searchModel = new ApprovalRequestModel;
 		$query = $searchModel::find()
@@ -56,7 +56,7 @@ class ApprovalRequestController extends BaseRestController
 	public function actionView($id)
 	{
 		if (PrivHelper::hasPriv('aaa/approval-request/crud', '0100') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 

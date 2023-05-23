@@ -20,7 +20,7 @@ class OnlinePaymentModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuOnlinePaymentStatus::Removed;
-    $this->softdelete_StatusField    = 'onpStatus';
+    // $this->softdelete_StatusField    = 'onpStatus';
     $this->softdelete_RemovedAtField = 'onpRemovedAt';
     $this->softdelete_RemovedByField = 'onpRemovedBy';
 	}

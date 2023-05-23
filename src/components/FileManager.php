@@ -110,7 +110,7 @@ class FileManager extends Component
 				if ($iMimeType === false) $iMimeType = null;
 
 			$iOwnerUserID            = $userID;
-			$iCreatorUserID          = Yii::$app->user->identity->usrID;
+			$iCreatorUserID          = Yii::$app->user->id;
 			$iLockedBy               = Yii::$app->getInstanceID();
 
 			$connection = \Yii::$app->db;

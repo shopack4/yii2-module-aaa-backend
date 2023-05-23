@@ -48,15 +48,17 @@ class WalletController extends BaseRestController
 
 	public function actionIndex($justForMe = false)
 	{
+		WalletModel::ensureIHaveDefaultWallet();
+
 		$filter = [];
 		if ($justForMe || (PrivHelper::hasPriv('aaa/wallet/crud', '0100') == false)) {
-			$filter = ['walOwnerUserID' => Yii::$app->user->identity->usrID];
+			$filter = ['walOwnerUserID' => Yii::$app->user->id];
 		}
 
 		$searchModel = new WalletModel;
 		$query = $searchModel::find()
 			->select(WalletModel::selectableColumns())
-			->with('owner')
+			->joinWith('owner')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -75,7 +77,7 @@ class WalletController extends BaseRestController
 	{
 		$model = WalletModel::find()
 			->select(WalletModel::selectableColumns())
-			->with('owner')
+			->joinWith('owner')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -86,7 +88,7 @@ class WalletController extends BaseRestController
 
 		if ((PrivHelper::hasPriv('aaa/wallet/crud', '0100') == false)
 			&& ($model != null)
-			&& ($model->walOwnerUserID != Yii::$app->user->identity->usrID)
+			&& ($model['walOwnerUserID'] != Yii::$app->user->id)
 		) {
 			throw new ForbiddenHttpException('access denied');
 		}
@@ -127,7 +129,7 @@ class WalletController extends BaseRestController
 	public function actionUpdate($id)
 	{
 		if (PrivHelper::hasPriv('aaa/wallet/crud', '0010') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -153,7 +155,7 @@ class WalletController extends BaseRestController
 	public function actionDelete($id)
 	{
 		if (PrivHelper::hasPriv('aaa/wallet/crud', '0001') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 

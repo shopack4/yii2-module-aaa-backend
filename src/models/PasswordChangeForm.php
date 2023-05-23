@@ -29,7 +29,7 @@ class PasswordChangeForm extends Model
       return false;
 
 		$userModel = UserModel::findOne([
-			'usrID' => Yii::$app->user->identity->usrID
+			'usrID' => Yii::$app->user->id
 		]);
 
 		if (!$userModel)

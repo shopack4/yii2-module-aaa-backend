@@ -43,7 +43,7 @@ class GatewayController extends BaseRestController
 	public function actionIndex()
 	{
 		$filter = [];
-		PrivHelper::checkPriv('aaa/gateway/crud', '0100');
+		// PrivHelper::checkPriv('aaa/gateway/crud', '0100');
 
 		$searchModel = new GatewayModel;
 		$query = $searchModel::find()
@@ -64,7 +64,7 @@ class GatewayController extends BaseRestController
 
 	public function actionView($id)
 	{
-		PrivHelper::checkPriv('aaa/gateway/crud', '0100');
+		// PrivHelper::checkPriv('aaa/gateway/crud', '0100');
 
 		$model = GatewayModel::find()
 			->select(GatewayModel::selectableColumns())

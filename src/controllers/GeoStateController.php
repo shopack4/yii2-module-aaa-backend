@@ -18,6 +18,12 @@ class GeoStateController extends BaseRestController
 	public function behaviors()
 	{
 		$behaviors = parent::behaviors();
+
+		$behaviors[BaseRestController::BEHAVIOR_AUTHENTICATOR]['except'] = [
+			'index',
+			'view',
+		];
+
 		return $behaviors;
 	}
 
@@ -32,7 +38,7 @@ class GeoStateController extends BaseRestController
 	public function actionIndex()
 	{
 		$filter = [];
-		PrivHelper::checkPriv('aaa/geo-state/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-state/crud', '0100');
 
 		$searchModel = new GeoStateModel;
 		$query = $searchModel::find()
@@ -53,7 +59,7 @@ class GeoStateController extends BaseRestController
 
 	public function actionView($id)
 	{
-		PrivHelper::checkPriv('aaa/geo-state/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-state/crud', '0100');
 
 		$model = GeoStateModel::find()
 			->select(GeoStateModel::selectableColumns())

@@ -6,6 +6,8 @@
 namespace shopack\aaa\backend\extensions\gateways\payment;
 
 use Yii;
+use yii\web\ServerErrorHttpException;
+use yii\web\UnprocessableEntityHttpException;
 use shopack\base\common\helpers\Url;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
@@ -20,7 +22,7 @@ class DevTestPaymentGateway
 
 	public function getTitle()
 	{
-		return 'Dev Test';
+		return '*** تست برنامه نویس ***';
 	}
 
 	public function getPaymentGatewayType()
@@ -44,26 +46,38 @@ class DevTestPaymentGateway
 	public function prepare(&$gatewayModel, $onlinePaymentModel, $callbackUrl)
 	{
 		return [
-			'ok',
-			'track-' . $onlinePaymentModel->onpUUID,
-			Url::to([
-				'/aaa/online-payment/devtestpaymentpage',
-				'paymentkey' => $onlinePaymentModel->onpUUID,
-				'callback' => $callbackUrl,
-			], true),
+			/* $response   */ 'ok',
+			/* $trackID    */ 'track-' . $onlinePaymentModel->onpUUID,
+			/* $paymentUrl */ //[
+				// 'post',
+				Url::to([
+					'/aaa/online-payment/devtestpaymentpage',
+					'paymentkey' => $onlinePaymentModel->onpUUID, //-> in url
+					'callback' => $callbackUrl, //-> in url
+				], true),
+				// 'aaa' => 'bbb', //-> in hidden field
+			// ],
 		];
 	}
 
-	public function run($controller, &$gatewayModel, $callbackUrl)
+	public function verify(&$gatewayModel, $onlinePaymentModel, $pgwResponse)
 	{
-	}
+		$result = $pgwResponse['result'] ?? null;
 
-	public function verify(&$gatewayModel, $onlinePaymentModel)
-	{
-		return [
-			// 'ref-' . $onlinePaymentModel->onpUUID,
-			'this is response',
-		];
+		if ($result == 'ok') {
+			return [
+				'ok',
+				'rrn-' . $onlinePaymentModel->onpUUID,
+			];
+		}
+
+		if ($result == 'error')
+			throw new UnprocessableEntityHttpException('payment failed');
+
+		if ($result == 'cancel')
+			throw new UnprocessableEntityHttpException('payment cancelled');
+
+		throw new ServerErrorHttpException('unknown payment result');
 	}
 
 }

@@ -10,7 +10,7 @@ use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
 use shopack\aaa\common\enums\enuPaymentGatewayType;
 
-class BankMellatPaymentGateway
+class BankAyandePaymentGateway
 	extends BasePaymentGateway
 	implements IPaymentGateway
 {
@@ -20,7 +20,7 @@ class BankMellatPaymentGateway
 
 	public function getTitle()
 	{
-		return 'بانک ملت';
+		return 'بانک آینده';
 	}
 
 	public function getPaymentGatewayType()

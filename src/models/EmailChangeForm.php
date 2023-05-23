@@ -36,7 +36,7 @@ class EmailChangeForm extends Model
     if (AuthHelper::isEmail($this->email) == false)
       throw new UnprocessableEntityHttpException("Invalid email");
 
-    $user = UserModel::findOne(Yii::$app->user->identity->usrID);
+    $user = UserModel::findOne(Yii::$app->user->id);
 
     if ((empty($user->usrEmail) == false) && ($this->email == $user->usrEmail))
       throw new UnprocessableEntityHttpException("New email is the same as the current.");

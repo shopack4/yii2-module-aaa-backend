@@ -72,7 +72,25 @@ class Module
 				[
 					'class' => \yii\rest\UrlRule::class,
 					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/message'],
+					'pluralize' => false,
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/message-template'],
+					'pluralize' => false,
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
 					'controller' => [$this->id . '/approval-request'],
+					'pluralize' => false,
+				],
+				[
+					'class' => \yii\rest\UrlRule::class,
+					// 'prefix' => 'v1',
+					'controller' => [$this->id . '/forgot-password-request'],
 					'pluralize' => false,
 				],
 				[
@@ -128,23 +146,25 @@ class Module
 					'controller' => [$this->id . '/basket'],
 					'pluralize' => false,
 
-					// 'tokens' => [
-					// 	'{uuid}' => '<uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}>',
-					// ],
+					'tokens' => [
+						'{key}' => '<key:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}>',
+					],
 
 					'patterns' => [
 						// 'GET,HEAD'					=> 'index',
 						// 'GET,HEAD {uuid}'		=> 'view',
 						// 'POST'							=> 'create',
 						// 'PUT,PATCH {uuid}'	=> 'update',
-						// 'DELETE {uuid}'			=> 'delete',
+						// 'DELETE item/{key}'		=> 'remove-item',
 						// '{uuid}'						=> 'options',
 						// ''									=> 'options',
 					],
 
 					'extraPatterns' => [
-						'POST add' => 'add',
-						'POST checkout' => 'checkout',
+						'POST item'						=> 'add-item',
+						'DELETE item/{key}'		=> 'remove-item',
+
+						'POST checkout'				=> 'checkout',
 					],
 				],
 				[

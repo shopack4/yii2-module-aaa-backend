@@ -14,11 +14,11 @@ use shopack\base\backend\helpers\AuthHelper;
 use yii\web\UnauthorizedHttpException;
 use yii\web\UnprocessableEntityHttpException;
 use shopack\aaa\backend\models\UserModel;
-use shopack\aaa\backend\models\AlertModel;
-use shopack\aaa\common\enums\enuAlertStatus;
+use shopack\aaa\backend\models\MessageModel;
+use shopack\aaa\common\enums\enuMessageStatus;
 use shopack\base\backend\helpers\GeneralHelper;
 use shopack\aaa\common\enums\enuForgotPasswordRequestKeyType;
-use shopack\aaa\common\enums\enuForgotPasswordRequestAlertType;
+use shopack\aaa\common\enums\enuForgotPasswordRequestMessageType;
 use shopack\aaa\common\enums\enuForgotPasswordRequestStatus;
 use shopack\aaa\common\enums\enuUserStatus;
 
@@ -105,15 +105,15 @@ class ForgotPasswordRequestModel extends AAAActiveRecord
     //-----------------------------------
     $forgotPasswordRequestTableName = static::tableName();
     $userTableName = UserModel::tableName();
-    $alertTableName = AlertModel::tableName();
+    $messageTableName = MessageModel::tableName();
 
     $qry =<<<SQLSTR
-          UPDATE {$alertTableName} alr
+          UPDATE {$messageTableName} msg
       INNER JOIN {$forgotPasswordRequestTableName} fpr
-              ON fpr.fprID = alr.alrForgotPasswordRequestID
+              ON fpr.fprID = msg.msgForgotPasswordRequestID
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Removed)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
@@ -157,12 +157,12 @@ SQLSTR;
 
     if (empty($models) == false && count($models) > 1) {
       $qry =<<<SQLSTR
-          UPDATE {$alertTableName} alr
+          UPDATE {$messageTableName} msg
       INNER JOIN {$forgotPasswordRequestTableName} fpr
-              ON fpr.fprID = alr.alrForgotPasswordRequestID
+              ON fpr.fprID = msg.msgForgotPasswordRequestID
       INNER JOIN {$userTableName} usr
               ON usr.usrID = fpr.fprUserID
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Error)}
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Error)}
            WHERE (
                  usrEmail = '{$normalizedInput}'
               OR usrMobile = '{$normalizedInput}'
@@ -226,7 +226,7 @@ SQLSTR;
     if (empty($userID)) {
       $userModel = UserModel::find()
         ->andWhere(['usr' . ($inputType == AuthHelper::PHRASETYPE_EMAIL ? 'Email' : 'Mobile') => $normalizedInput])
-        ->andWhere(['<>', 'usrStatus', enuUserStatus::Removed])
+        ->andWhere(['!=', 'usrStatus', enuUserStatus::Removed])
         ->one();
 
       if (!$userModel)
@@ -272,19 +272,20 @@ SQLSTR;
         throw new UnprocessableEntityHttpException("error in updating forgot password request\n" . implode("\n", $forgotPasswordRequestModel->getFirstErrors()));
 
       $qry =<<<SQLSTR
-          UPDATE {$alertTableName}
-             SET alrStatus = {$fnGetConst(enuAlertStatus::Removed)}
-           WHERE alrForgotPasswordRequestID = '{$forgotPasswordRequestModel->fprID}'
+          UPDATE {$messageTableName}
+             SET msgStatus = {$fnGetConst(enuMessageStatus::Removed)}
+           WHERE msgForgotPasswordRequestID = '{$forgotPasswordRequestModel->fprID}'
 SQLSTR;
       static::getDb()->createCommand($qry)->execute();
     }
 
-    $alertModel = new AlertModel();
-    $alertModel->alrUserID  = $userID;
-    $alertModel->alrForgotPasswordRequestID = $forgotPasswordRequestModel->fprID;
-    $alertModel->alrTarget  = $normalizedInput;
+    $messageModel = new MessageModel();
+    $messageModel->msgIssuer  = 'aaa:forgotPasswordRequest:request';
+    $messageModel->msgUserID  = $userID;
+    $messageModel->msgForgotPasswordRequestID = $forgotPasswordRequestModel->fprID;
+    $messageModel->msgTarget  = $normalizedInput;
 
-    $alrInfo = [
+    $msgInfo = [
       'gender' => $gender,
       'firstName' => $firstName,
       'lastName' => $lastName,
@@ -292,16 +293,16 @@ SQLSTR;
     ];
 
     if ($inputType == enuForgotPasswordRequestKeyType::Email) {
-      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::RequestByEmail;
-      $alrInfo['email'] = $normalizedInput;
+      $messageModel->msgTypeKey = enuForgotPasswordRequestMessageType::RequestByEmail;
+      $msgInfo['email'] = $normalizedInput;
     } else {
-      $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::RequestByMobile;
-      $alrInfo['mobile'] = $normalizedInput;
+      $messageModel->msgTypeKey = enuForgotPasswordRequestMessageType::RequestByMobile;
+      $msgInfo['mobile'] = $normalizedInput;
     }
-    $alertModel->alrInfo = $alrInfo;
+    $messageModel->msgInfo = $msgInfo;
 
-    if ($alertModel->save() == false)
-      throw new UnprocessableEntityHttpException("could not save alert\n" . implode("\n", $alertModel->getFirstErrors()));
+    if ($messageModel->save() == false)
+      throw new UnprocessableEntityHttpException("could not save message\n" . implode("\n", $messageModel->getFirstErrors()));
 
     return ($codeIsNew ? 'code sent' : 'code resent');
   }
@@ -378,30 +379,31 @@ SQLSTR;
       if ($forgotPasswordRequestModel->user->save() == false)
         throw new UnprocessableEntityHttpException("could not save new password\n" . implode("\n", $forgotPasswordRequestModel->user->getFirstErrors()));
 
-      //3: send alert '[email|mobile]Approved'
-      $alertModel = new AlertModel();
-      $alertModel->alrUserID  = $forgotPasswordRequestModel->user->usrID;
-      // $alertModel->alrForgotPasswordRequestID = null;
+      //3: send message '[email|mobile]Approved'
+      $messageModel = new MessageModel();
+      $messageModel->msgIssuer  = 'aaa:forgotPasswordRequest:accept';
+      $messageModel->msgUserID  = $forgotPasswordRequestModel->user->usrID;
+      // $messageModel->msgForgotPasswordRequestID = null;
 
-      $alrInfo = [
+      $msgInfo = [
         'gender' => $forgotPasswordRequestModel->user->usrGender,
         'firstName' => $forgotPasswordRequestModel->user->usrFirstName,
         'lastName' => $forgotPasswordRequestModel->user->usrLastName,
       ];
 
       if ($forgotPasswordRequestModel->fprRequestedBy == enuForgotPasswordRequestKeyType::Email) {
-        $alertModel->alrTarget  = $forgotPasswordRequestModel->user->usrEmail;
-        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::ChangedByEmail;
-        $alrInfo['email'] = $alertModel->alrTarget;
+        $messageModel->msgTarget  = $forgotPasswordRequestModel->user->usrEmail;
+        $messageModel->msgTypeKey = enuForgotPasswordRequestMessageType::ChangedByEmail;
+        $msgInfo['email'] = $messageModel->msgTarget;
       } else {
-        $alertModel->alrTarget  = $forgotPasswordRequestModel->user->usrMobile;
-        $alertModel->alrTypeKey = enuForgotPasswordRequestAlertType::ChangedByMobile;
-        $alrInfo['mobile'] = $alertModel->alrTarget;
+        $messageModel->msgTarget  = $forgotPasswordRequestModel->user->usrMobile;
+        $messageModel->msgTypeKey = enuForgotPasswordRequestMessageType::ChangedByMobile;
+        $msgInfo['mobile'] = $messageModel->msgTarget;
       }
-      $alertModel->alrInfo = $alrInfo;
+      $messageModel->msgInfo = $msgInfo;
 
-      if ($alertModel->save() == false)
-        throw new UnprocessableEntityHttpException("could not save alert\n" . implode("\n", $alertModel->getFirstErrors()));
+      if ($messageModel->save() == false)
+        throw new UnprocessableEntityHttpException("could not save message\n" . implode("\n", $messageModel->getFirstErrors()));
 
       //
       $transaction->commit();

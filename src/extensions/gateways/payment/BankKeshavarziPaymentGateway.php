@@ -15,7 +15,7 @@ class BankKeshavarziPaymentGateway
 {
 	public function getTitle()
 	{
-		return 'Bank Keshavarzi';
+		return 'بانک کشاورزی';
 	}
 
 	public function getPaymentGatewayType()

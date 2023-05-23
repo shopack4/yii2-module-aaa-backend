@@ -16,6 +16,8 @@ use shopack\aaa\common\enums\enuPaymentGatewayType;
 use shopack\aaa\backend\models\OnlinePaymentModel;
 use shopack\aaa\backend\models\GatewayModel;
 use shopack\aaa\common\enums\enuGatewayStatus;
+use shopack\base\common\helpers\ArrayHelper;
+use shopack\aaa\common\enums\enuVoucherType;
 
 class OnlinePaymentController extends BaseRestController
 {
@@ -43,13 +45,15 @@ class OnlinePaymentController extends BaseRestController
 	{
 		$filter = [];
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0100') == false)
-			$filter = ['vchOwnerUserID' => Yii::$app->user->identity->usrID];
+			$filter = ['vchOwnerUserID' => Yii::$app->user->id];
 
 		$searchModel = new OnlinePaymentModel;
 		$query = $searchModel::find()
 			->select(OnlinePaymentModel::selectableColumns())
-			->with('gateway')
-			->with('voucher')
+			->joinWith('gateway')
+			->joinWith('voucher')
+			->joinWith('voucher.owner')
+			->joinWith('wallet')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -68,8 +72,10 @@ class OnlinePaymentController extends BaseRestController
 	{
 		$model = OnlinePaymentModel::find()
 			->select(OnlinePaymentModel::selectableColumns())
-			->with('gateway')
-			->with('voucher')
+			->joinWith('gateway')
+			->joinWith('voucher')
+			->joinWith('voucher.owner')
+			->joinWith('wallet')
 			->with('createdByUser')
 			->with('updatedByUser')
 			->with('removedByUser')
@@ -80,7 +86,7 @@ class OnlinePaymentController extends BaseRestController
 
 		if ((PrivHelper::hasPriv('aaa/online-payment/crud', '0100') == false)
 			&& ($model != null)
-			&& ($model->voucher->vchOwnerUserID != Yii::$app->user->identity->usrID)
+			&& (($model['voucher']['vchOwnerUserID'] ?? null) != Yii::$app->user->id)
 		) {
 			throw new ForbiddenHttpException('access denied');
 		}
@@ -121,7 +127,7 @@ class OnlinePaymentController extends BaseRestController
 	public function actionUpdate($id)
 	{
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0010') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -147,7 +153,7 @@ class OnlinePaymentController extends BaseRestController
 	public function actionDelete($id)
 	{
 		if (PrivHelper::hasPriv('aaa/online-payment/crud', '0001') == false) {
-			if (Yii::$app->user->identity->usrID != $id)
+			if (Yii::$app->user->id != $id)
 				throw new ForbiddenHttpException('access denied');
 		}
 
@@ -207,25 +213,64 @@ class OnlinePaymentController extends BaseRestController
 		if (!YII_ENV_DEV)
 			throw new ServerErrorHttpException('only dev mode allowed');
 
+		$onlinePaymentModel = OnlinePaymentModel::find()
+      ->andWhere(['onpUUID' => $paymentkey])
+      ->one();
+
 		$this->response->format = \yii\web\Response::FORMAT_HTML;
 
 		return <<<HTML
 <p>this is test payment page</p>
 <p>paymentkey: {$paymentkey}</p>
+<p>amount: {$onlinePaymentModel->onpAmount}</p>
 <p>callback: {$callback}</p>
+<p>frontend callback: {$onlinePaymentModel->onpCallbackUrl}</p>
 <p><a href='{$callback}?result=ok'>[OK]</a></p>
 <p><a href='{$callback}?result=error'>[ERROR]</a></p>
+<p><a href='{$callback}?result=cancel'>[CANCEL]</a></p>
 HTML;
 	}
 
 	//accepts all http methods
 	public function actionCallback($paymentkey)
   {
-		$onlinePaymentModel = Yii::$app->paymentManager->approveOnlinePayment($paymentkey);
+		$pgwResponse = array_merge(
+			Yii::$app->request->getQueryParams(),
+			Yii::$app->request->getBodyParams(),
+		);
 
-		$this->redirect([$onlinePaymentModel->onpCallbackUrl,
-			'paymentkey' => $paymentkey,
-		]);
+		try {
+			$onlinePaymentModel = Yii::$app->paymentManager->approveOnlinePayment($paymentkey, $pgwResponse);
+
+			$done = $onlinePaymentModel->voucher->processVoucher();
+
+		} catch (\Throwable $th) {
+			if (empty($onlinePaymentModel)) {
+				$onlinePaymentModel = OnlinePaymentModel::find()
+					->joinWith('gateway')
+					->joinWith('voucher')
+					->andWhere(['onpUUID' => $paymentkey])
+					->one();
+			}
+
+			$onlinePaymentModel->addError('', $th->getMessage());
+
+			//throw $th;
+		}
+
+		//---
+		$url = $onlinePaymentModel->onpCallbackUrl;
+		if (strpos($url, '?') === false)
+			$url .= '?';
+		else
+			$url .= '&';
+		$url .= 'paymentkey=' . $paymentkey;
+
+		$errors = $onlinePaymentModel->getErrorSummary(true);
+		if ($errors)
+			$url .= '&errors=' . urlencode(implode('\n', $errors));
+
+		$this->redirect($url);
 
 		// $onlinePaymentClass = $onlinePaymentModel->getOnlinePaymentClass();
 

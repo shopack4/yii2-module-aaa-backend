@@ -1,6 +1,9 @@
 <?php
+/**
+ * @author Kambiz Zandi <kambizzandi@gmail.com>
+ */
 
-use yii\db\Migration;
+use shopack\base\common\db\Migration;
 
 class m230412_132444_aaa_change_expire_enum_from_e_to_x extends Migration
 {

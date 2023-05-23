@@ -18,7 +18,7 @@ class WalletTransactionModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuWalletTransactionStatus::Removed;
-    $this->softdelete_StatusField    = 'wtrStatus';
+    // $this->softdelete_StatusField    = 'wtrStatus';
     $this->softdelete_RemovedAtField = 'wtrRemovedAt';
     $this->softdelete_RemovedByField = 'wtrRemovedBy';
 	}

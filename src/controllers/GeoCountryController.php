@@ -18,6 +18,12 @@ class GeoCountryController extends BaseRestController
 	public function behaviors()
 	{
 		$behaviors = parent::behaviors();
+
+		$behaviors[BaseRestController::BEHAVIOR_AUTHENTICATOR]['except'] = [
+			'index',
+			'view',
+		];
+
 		return $behaviors;
 	}
 
@@ -32,7 +38,7 @@ class GeoCountryController extends BaseRestController
 	public function actionIndex()
 	{
 		$filter = [];
-		PrivHelper::checkPriv('aaa/geo-country/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-country/crud', '0100');
 
 		$searchModel = new GeoCountryModel;
 		$query = $searchModel::find()
@@ -53,7 +59,7 @@ class GeoCountryController extends BaseRestController
 
 	public function actionView($id)
 	{
-		PrivHelper::checkPriv('aaa/geo-country/crud', '0100');
+		// PrivHelper::checkPriv('aaa/geo-country/crud', '0100');
 
 		$model = GeoCountryModel::find()
 			->select(GeoCountryModel::selectableColumns())

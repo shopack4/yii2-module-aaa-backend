@@ -6,25 +6,37 @@
 namespace shopack\aaa\backend\extensions\gateways\payment;
 
 use Yii;
+use yii\web\UnprocessableEntityHttpException;
+use GuzzleHttp\Client;
+use shopack\aaa\common\enums\enuPaymentGatewayType;
 use shopack\aaa\backend\classes\BasePaymentGateway;
 use shopack\aaa\backend\classes\IPaymentGateway;
-use shopack\aaa\common\enums\enuPaymentGatewayType;
+
+//https://github.com/shetabit/multipay/blob/master/src/Drivers/Asanpardakht/Asanpardakht.php
 
 class AsanPardakhtPaymentGateway
 	extends BasePaymentGateway
 	implements IPaymentGateway
 {
-	const URL_WEBSERVICE = "https://services.asanpardakht.net/paygate/merchantservices.asmx?WSDL";
+	const URL_APISERVER		= "https://ipgrest.asanpardakht.ir/v1/";
+	const URL_PAYMENT			= "https://asan.shaparak.ir";
 
-	const PARAM_KEY = 'key';
-	const PARAM_IV = 'iv';
+	const URLToken				= 'Token';
+	const URLTime					= 'Time';
+	const URLTranResult		= 'TranResult';
+	const URLCardHash			= 'CardHash';
+	const URLSettlement		= 'Settlement';
+	const URLVerify				= 'Verify';
+	const URLCancel				= 'Cancel';
+	const URLReverse			= 'Reverse';
+
 	const PARAM_USERNAME = 'userName';
 	const PARAM_PASSWORD = 'password';
 	const PARAM_MERCHANT_ID = 'merchantID';
 
 	public function getTitle()
 	{
-		return 'Asan Pardakht';
+		return 'آسان پرداخت';
 	}
 
 	public function getPaymentGatewayType()
@@ -35,18 +47,6 @@ class AsanPardakhtPaymentGateway
 	public function getParametersSchema()
 	{
 		return array_merge(parent::getParametersSchema(), [
-			[
-				'id' => self::PARAM_KEY,
-				'type' => 'string',
-				'mandatory' => 1,
-				'label' => 'Key',
-			],
-			[
-				'id' => self::PARAM_IV,
-				'type' => 'string',
-				'mandatory' => 1,
-				'label' => 'IV',
-			],
 			[
 				'id' => self::PARAM_USERNAME,
 				'type' => 'string',
@@ -68,235 +68,162 @@ class AsanPardakhtPaymentGateway
 		]);
 	}
 
+	protected function callApi($method, $url, $data = []): array
+	{
+		$username = $this->extensionModel->gtwPluginParameters[self::PARAM_USERNAME];
+		$password = $this->extensionModel->gtwPluginParameters[self::PARAM_PASSWORD];
+
+		$client = new Client(['base_uri' => self::URL_APISERVER]);
+		$response = $client->request($method, $url, [
+			"json" => $data,
+			"headers" => [
+				'Content-Type' => 'application/json',
+				'usr' => $username,
+				'pwd' => $password
+			],
+			"http_errors" => false,
+		]);
+
+		return [
+			'status_code' => $response->getStatusCode(),
+			'content' => json_decode($response->getBody()->getContents(), true),
+		];
+	}
+
 	public function prepare(&$gatewayModel, $onlinePaymentModel, $callbackUrl)
 	{
+		$merchant_id = $this->extensionModel->gtwPluginParameters[self::PARAM_MERCHANT_ID];
+
+		$price = $onlinePaymentModel->onpAmount * 10; //toman -> rial
+		$callBackUrl = urlencode($callbackUrl);
+
+		$serverTime = $this->callApi('GET', self::URLTime)['content'];
+
+		try {
+			//--token
+			$token = $this->callApi('POST', self::URLToken, [
+				'serviceTypeId'							=> 1,
+				'merchantConfigurationId'		=> $merchant_id,
+				'localInvoiceId'						=> $onlinePaymentModel->onpID,
+				'amountInRials'							=> $price,
+				'localDate'									=> $serverTime,
+				'callbackURL'								=> $callBackUrl,
+				'paymentId'									=> "0",
+				'additionalData'						=> '',
+			]);
+		} catch (\Exception $exp) {
+			// echo "<div class=\"error\">{$E}</div>";
+			throw new UnprocessableEntityHttpException('Error in prepare payment (' . $exp->getMessage() . ')');
+		}
+
+		if (!isset($token['status_code']) || $token['status_code'] != 200) {
+			$this->throwFailed($token['status_code']);
+		}
+
+		$token = $token['content'];
+
+		return [
+			/* $response   */ 'ok',
+			/* $trackID    */ $token,
+			/* $paymentUrl */ [
+				'post',
+				self::URL_PAYMENT,
+				'RefId' => $token,
+				// 'mobileap' => , //set mobileap for get user cards
+			],
+		];
 	}
 
-	public function run($controller, &$gatewayModel, $callbackUrl)
+	public function verify(&$gatewayModel, $onlinePaymentModel, $pgwResponse)
 	{
+		$merchant_id = $this->extensionModel->gtwPluginParameters[self::PARAM_MERCHANT_ID];
+
+		$result = $this->callApi('GET', self::URLTranResult
+			. '?merchantConfigurationId=' . $merchant_id
+			. '&localInvoiceId=' . $onlinePaymentModel->onpID,
+		);
+
+		if (!isset($result['status_code']) || $result['status_code'] != 200) {
+			$this->throwFailed($result['status_code']);
+		}
+
+		$payGateTransactionId = $result['content']['payGateTranID'];
+
+		//step1: verify
+		$verify_result = $this->callApi('POST', self::URLVerify, [
+			'merchantConfigurationId' => (int)$merchant_id,
+			'payGateTranId' => (int)$payGateTransactionId,
+		]);
+
+		if (!isset($verify_result['status_code']) or $verify_result['status_code'] != 200) {
+			$this->throwFailed($verify_result['status_code']);
+		}
+
+		//step2: settlement
+		$this->callApi('POST', self::URLSettlement, [
+			'merchantConfigurationId' => (int)$merchant_id,
+			'payGateTranId' => (int)$payGateTransactionId,
+		]);
+
+		//
+		return [
+			'ok',
+			$result['content']['rrn'],
+			// 'traceNo'				=> $payGateTransactionId,
+			// 'referenceNo'		=> $result['content']['rrn'],
+			// 'transactionId'	=> $result['content']['refID'],
+			// 'cardNo'				=> $result['content']['cardNumber'],
+		];
 	}
 
-	public function verify(&$gatewayModel, $onlinePaymentModel)
+	protected function throwFailed($status)
 	{
+		$translations = [
+			400 => "bad request",
+			401 => "unauthorized. probably wrong or unsent header(s)",
+			471 => "identity not trusted to proceed",
+			472 => "no records found",
+			473 => "invalid merchant username or password",
+			474 => "invalid incoming request machine ip. check response body to see your actual public IP address",
+			475 => "invoice identifier is not a number",
+			476 => "request amount is not a number",
+			477 => "request local date length is invalid",
+			478 => "request local date is not in valid format",
+			479 => "invalid service type id",
+			480 => "invalid payer id",
+			481 => "incorrect settlement description format",
+			482 => "settlement slices does not match total amount",
+			483 => "unregistered iban",
+			484 => "internal error for other reasons",
+			485 => "invalid local date",
+			486 => "amount not in range",
+			487 => "service not found or not available for merchant",
+			488 => "invalid default callback",
+			489 => "duplicate local invoice id",
+			490 => "merchant disabled or misconfigured",
+			491 => "too many settlement destinations",
+			492 => "unprocessable request",
+			493 => "error processing special request for other reasons like business restrictions",
+			494 => "invalid payment_id for governmental payment",
+			495 => "invalid referenceId in additionalData",
+			496 => "invalid json in additionalData",
+			497 => "invalid payment_id location",
+			571 => "misconfiguration OR not yet processed",
+			572 => "misconfiguration OR transaction status undetermined",
+			573 => "misconfiguraed valid ips for configuration OR unable to request for verification due to an internal error",
+			574 => "internal error in uthorization",
+			575 => "no valid ibans found for merchant",
+			576 => "internal error",
+			577 => "internal error",
+			578 => "no default sharing is defined for merchant",
+			579 => "cant submit ibans with default sharing endpoint",
+			580 => "error processing special request"
+		];
+
+		if (array_key_exists($status, $translations))
+			throw new UnprocessableEntityHttpException("Error ({$status}:{$translations[$status]}) in payment transaction");
+
+		throw new UnprocessableEntityHttpException("Error ({$status}) in payment transaction");
 	}
-
-/*
-	public function paymentinvoice()
-	{
-		if (isset($id)) {
-			$result_invoice = Query("SELECT * From tbl_invoice Where tbl_invoice_id='$id'");
-			$read_invoice = mysqli_fetch_array($result_invoice);
-			$code = $read_invoice['tbl_invoice_usercode'];
-			$price = $read_invoice['tbl_invoice_price'];
-			$_SESSION['invoiceid'] = $id;
-			$orderId = rand();
-			$localDate = date("Ymd His");
-			$additionalData = "";
-			$callBackUrl = $site_url . 'profile/successinvoice/';
-
-			$req = "1,{$username},{$password},{$orderId},{$price},{$localDate},{$additionalData},{$callBackUrl},0";
-			$encryptedRequest = encrypt($req);
-
-			try {
-					$opts = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false));
-					$params = array('stream_context' => stream_context_create($opts));
-					$client = @new soapclient($WebServiceUrl, $params);
-			} catch (SoapFault $E) {
-					// echo "<div class=\"error\">{$E->faultstring}</div>";
-					echo "<div class=\"error\">خطا در فراخوانی وب‌سرويس.</div>";
-					exit();
-			}
-			$params = array(
-					'merchantConfigurationID' => $merchantConfigurationID,
-					'encryptedRequest' => $encryptedRequest
-			);
-			$result = $client->RequestOperation($params)
-					or die("<div class=\"error\">خطای فراخوانی متد درخواست تراکنش.</div>");
-
-			$result = $result->RequestOperationResult;
-			if ($result{
-					0} == '0') {
-					echo "<script language='javascript' type='text/javascript'>RedirctToIPG('" . substr($result, 2) . "');</script>";
-			} else {
-					echo "<div class=\"error\">خطای شماره: {$result}</div>";
-			}
-	}
-}
-
-public function successinvoice()
-{
-	$ReturningParams = $_POST['ReturningParams'];
-	$ReturningParams = decrypt($ReturningParams);
-	$RetArr = explode(",", $ReturningParams);
-	$Amount = $RetArr[0];
-	$SaleOrderId = $RetArr[1];
-	$RefId = $RetArr[2];
-	$ResCode = $RetArr[3];
-	$ResMessage = $RetArr[4];
-	$PayGateTranID = $RetArr[5];
-	$RRN = $RetArr[6];
-	$LastFourDigitOfPAN = $RetArr[7];
-	if ($ResCode != '0' && $ResCode != '00') {
-			//echo 'تراکنش ناموفق<br>خطای شماره: '.$ResCode;
-			echo '<div class="error-bank">تراکنش شما ناموفق میباشد</div>';
-			exit();
-	}
-	try {
-			$opts = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false));
-			$params = array('stream_context' => stream_context_create($opts));
-			$client = @new soapclient($WebServiceUrl, $params);
-	} catch (SoapFault $E) {
-			// echo $E->faultstring;
-			//echo "خطا در فراخوانی وب‌سرويس.";
-			echo '<div class="error-bank">خطا در فراخوانی وب‌سرويس.</div>';
-			exit();
-	}
-
-	$encryptedCredintials = encrypt("{$username},{$password}");
-	$params = array(
-			'merchantConfigurationID' => $merchantConfigurationID,
-			'encryptedCredentials' => $encryptedCredintials,
-			'payGateTranID' => $PayGateTranID
-	);
-
-	//Verify
-	$result = $client->RequestVerification($params)
-			or die("خطای فراخوانی متد وريفای.");
-	$result = $result->RequestVerificationResult;
-	if ($result != '500') {
-			echo ('خطای شماره: ' . $result . ' در هنگام Verify');
-			exit();
-	} else {
-			//echo('<div class="success-banl">تراکنش با موفقيت تایید شد.</div>');
-	}
-
-	//Settlment
-	$result = $client->RequestReconciliation($params)
-			or die("خطای فراخوانی متد تسويه.");
-	$result = $result->RequestReconciliationResult;
-	if ($result != '600') {
-			echo ('خطای شماره: ' . $result . ' در هنگام Settlement');
-			exit();
-	} else {
-			//echo('<div style="width:250px; margin:100px auto; direction:rtl; font:bold 14px Tahoma">تراکنش با موفقيت Settlement شد.</div>');
-	}
-	$date = jdate("Y/m/d : A:h:s");
-	$date_day = jdate("Y/m/d");
-	$invoice_id = $_SESSION['invoiceid'];
-	Query("update tbl_invoice set tbl_invoice_datepay='$date',tbl_invoice_resnum='$RRN',tbl_invoice_dateday='$date_day' where tbl_invoice_id='$invoice_id' ");
-	//echo('<div class="success-bank">پرداخت با موفقيت انجام پذيرفت.</div>');
-	echo ('<div class="success-bank">
-پرداخت با موفقيت انجام پذيرفت.
-<br>
-کدپیگیری : ' . $RRN . '</div>');
-
-	unset($_SESSION['invoiceid']);
-}
-
-public function gotobank()
-{
-	if (isset($_POST['payment'])) {
-			$code = $read_profile['tbl_profile_code'];
-			$price = $membership;
-			$orderId = rand();
-			$localDate = date("Ymd His");
-			$additionalData = "";
-			$callBackUrl = $site_url . 'profile/success/';
-
-			$req = "1,{$username},{$password},{$orderId},{$price},{$localDate},{$additionalData},{$callBackUrl},0";
-			$encryptedRequest = encrypt($req);
-
-			try {
-					$opts = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false));
-					$params = array('stream_context' => stream_context_create($opts));
-					$client = @new soapclient($WebServiceUrl, $params);
-			} catch (SoapFault $E) {
-					// echo "<div class=\"error\">{$E->faultstring}</div>";
-					echo "<div class=\"error\">خطا در فراخوانی وب‌سرويس.</div>";
-					exit();
-			}
-			$params = array(
-					'merchantConfigurationID' => $merchantConfigurationID,
-					'encryptedRequest' => $encryptedRequest
-			);
-			$result = $client->RequestOperation($params)
-					or die("<div class=\"error\">خطای فراخوانی متد درخواست تراکنش.</div>");
-
-			$result = $result->RequestOperationResult;
-			if ($result{
-					0} == '0') {
-					echo "<script language='javascript' type='text/javascript'>RedirctToIPG('" . substr($result, 2) . "');</script>";
-			} else {
-					echo "<div class=\"error\">خطای شماره: {$result}</div>";
-			}
-	}
-}
-
-public function success()
-{
-	$ReturningParams = $_POST['ReturningParams'];
-	$ReturningParams = decrypt($ReturningParams);
-	$RetArr = explode(",", $ReturningParams);
-	$Amount = $RetArr[0];
-	$SaleOrderId = $RetArr[1];
-	$RefId = $RetArr[2];
-	$ResCode = $RetArr[3];
-	$ResMessage = $RetArr[4];
-	$PayGateTranID = $RetArr[5];
-	$RRN = $RetArr[6];
-	$LastFourDigitOfPAN = $RetArr[7];
-	if ($ResCode != '0' && $ResCode != '00') {
-			//echo 'تراکنش ناموفق<br>خطای شماره: '.$ResCode;
-			echo '<div class="error-bank">تراکنش شما ناموفق میباشد</div>';
-			exit();
-	}
-	try {
-			$opts = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false));
-			$params = array('stream_context' => stream_context_create($opts));
-			$client = @new soapclient($WebServiceUrl, $params);
-	} catch (SoapFault $E) {
-			// echo $E->faultstring;
-			//echo "خطا در فراخوانی وب‌سرويس.";
-			echo '<div class="error-bank">خطا در فراخوانی وب‌سرويس.</div>';
-			exit();
-	}
-
-	$encryptedCredintials = encrypt("{$username},{$password}");
-	$params = array(
-			'merchantConfigurationID' => $merchantConfigurationID,
-			'encryptedCredentials' => $encryptedCredintials,
-			'payGateTranID' => $PayGateTranID
-	);
-
-	//Verify
-	$result = $client->RequestVerification($params)
-			or die("خطای فراخوانی متد وريفای.");
-	$result = $result->RequestVerificationResult;
-	if ($result != '500') {
-			echo ('خطای شماره: ' . $result . ' در هنگام Verify');
-			exit();
-	} else {
-			//echo('<div class="success-banl">تراکنش با موفقيت تایید شد.</div>');
-	}
-
-	//Settlment
-	$result = $client->RequestReconciliation($params)
-			or die("خطای فراخوانی متد تسويه.");
-	$result = $result->RequestReconciliationResult;
-	if ($result != '600') {
-			echo ('خطای شماره: ' . $result . ' در هنگام Settlement');
-			exit();
-	} else {
-			//echo('<div style="width:250px; margin:100px auto; direction:rtl; font:bold 14px Tahoma">تراکنش با موفقيت Settlement شد.</div>');
-	}
-	$date = jdate("Y/m/d : A:h:s");
-	$date_day = jdate("Y/m/d");
-	Query("insert into tbl_onlinebank (tbl_onlinebank_date,tbl_onlinebank_rrn,tbl_onlinebank_user,tbl_onlinebank_price,tbl_onlinebank_status,tbl_onlinebank_dateday) values('$date','$RRN','$systemcode','$Amount','0','$date_day')");
-	echo ('<div class="success-bank">
-پرداخت با موفقيت انجام پذيرفت.
-<br>
-کدپیگیری : ' . $RRN . '</div>');
-}
-*/
 
 }

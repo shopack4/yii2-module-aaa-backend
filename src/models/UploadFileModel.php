@@ -16,7 +16,7 @@ class UploadFileModel extends AAAActiveRecord
   public function initSoftDelete()
   {
     $this->softdelete_RemovedStatus  = enuUploadFileStatus::Removed;
-    $this->softdelete_StatusField    = 'uflStatus';
+    // $this->softdelete_StatusField    = 'uflStatus';
     $this->softdelete_RemovedAtField = 'uflRemovedAt';
     $this->softdelete_RemovedByField = 'uflRemovedBy';
   }
