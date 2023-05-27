@@ -28,6 +28,7 @@ class PaymentManager extends Component
 {
 	/**
 	 * return [onpkey, paymentUrl]
+	 * or $exp
 	 */
 	public function createOnlinePayment(
 		$voucherModel,
@@ -66,11 +67,26 @@ class PaymentManager extends Component
 		], true);
 
 		$gatewayClass = $gatewayModel->getGatewayClass();
-		list ($response, $trackID, $paymentUrl) = $gatewayClass->prepare(
-			$gatewayModel,
-			$onlinePaymentModel,
-			$backendCallback
-		);
+
+		try {
+			list ($response, $trackID, $paymentUrl) = $gatewayClass->prepare(
+				$gatewayModel,
+				$onlinePaymentModel,
+				$backendCallback
+			);
+		} catch (\Throwable $exp) {
+
+			$onlinePaymentModel->onpResult = [
+				'error' => $exp->getMessage(),
+			];
+			$onlinePaymentModel->onpStatus = enuOnlinePaymentStatus::Error;
+			if ($onlinePaymentModel->save() == false)
+				throw new ServerErrorHttpException('It is not possible to update online payment');
+
+			return $exp;
+
+			// throw $exp;
+		}
 
 		//4: save to onp
 		$onlinePaymentModel->onpTrackNumber	= $trackID;
@@ -319,21 +335,43 @@ SQL;
 			list ($result, $rrn) = $gatewayClass->verify($onlinePaymentModel->gateway, $onlinePaymentModel, $pgwResponse);
 
 			$onlinePaymentModel->onpRRN = $rrn;
-			$onlinePaymentModel->onpResult = $result;
+			$onlinePaymentModel->onpResult = (array)$result;
 			$onlinePaymentModel->onpStatus = enuOnlinePaymentStatus::Paid;
 			if ($onlinePaymentModel->save() == false) {
 				//todo: ???
 			}
-		} catch (\Throwable $th) {
+
+		} catch (\Throwable $exp) {
 			$onlinePaymentModel->onpResult = [
-				'error' => $th->getMessage(),
+				'error' => $exp->getMessage(),
 			];
 			$onlinePaymentModel->onpStatus = enuOnlinePaymentStatus::Error;
 			if ($onlinePaymentModel->save() == false) {
 				//todo: ???
 			}
 
-			throw $th;
+			//---------------
+			//decrease USAGE_TODAY_USED_AMOUNT ($onlinePaymentModel->onpAmount)
+			// if USAGE_LAST_TRANSACTION_DATE = CURDATE()
+
+			$fnGetConst = function($value) { return $value; };
+			$gatewayTableName = GatewayModel::tableName();
+
+			$qry =<<<SQL
+			UPDATE	{$gatewayTableName}
+				 SET	gtwUsages = JSON_MERGE_PATCH(
+								COALESCE(JSON_REMOVE(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}'), '{}'),
+								JSON_OBJECT(
+									'{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}', CAST(JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_TODAY_USED_AMOUNT)}') AS UNSIGNED) - {$onlinePaymentModel->onpAmount}
+								)
+							)
+			 WHERE	gtwID = {$onlinePaymentModel->onpGatewayID}
+			 	 AND	JSON_UNQUOTE(JSON_EXTRACT(gtwUsages, '$.{$fnGetConst(BasePaymentGateway::USAGE_LAST_TRANSACTION_DATE)}')) = CURDATE()
+SQL;
+			Yii::$app->db->createCommand($qry)->execute();
+
+			//---------------
+			throw $exp;
 		}
 	}
 

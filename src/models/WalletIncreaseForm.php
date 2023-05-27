@@ -58,12 +58,11 @@ class WalletIncreaseForm extends Model
       $voucherModel->vchItems       = [
         'inc-wallet-id' => $this->walletID,
       ];
-
       if ($voucherModel->save() == false)
         throw new ServerErrorHttpException('It is not possible to create a voucher');
 
       //2- create online payment
-      list ($onpUUID, $paymentUrl) = Yii::$app->paymentManager->createOnlinePayment(
+      $onpResult = Yii::$app->paymentManager->createOnlinePayment(
         $voucherModel,
         $this->gatewayType,
         $this->callbackUrl,
@@ -73,7 +72,17 @@ class WalletIncreaseForm extends Model
       //commit
       $transaction->commit();
 
+      //
+      if ($onpResult instanceof \Throwable) {
+        $voucherModel->vchStatus = enuVoucherStatus::Error;
+        if ($voucherModel->save() == false)
+          throw new ServerErrorHttpException('It is not possible to update voucher');
+
+        throw $onpResult;
+      }
+
       //3- return [onpkey, paymentUrl]
+      list ($onpUUID, $paymentUrl) = $onpResult;
       return [
         'onpkey' => $onpUUID,
         'paymentUrl' => $paymentUrl,

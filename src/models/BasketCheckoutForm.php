@@ -132,37 +132,49 @@ SQL;
 				$voucherModel->refresh();
 			}
 
-			if ($remainedAmount > 0) {
-				//create online payment
-				list ($onpUUID, $paymentUrl) = Yii::$app->paymentManager->createOnlinePayment(
-					$voucherModel,
-					$this->gatewayType,
-					$this->callbackUrl,
-					null, //$this->walletID
-				);
+			// if ($remainedAmount > 0) {
+			// 	//create online payment
+			// 	$onpResult = Yii::$app->paymentManager->createOnlinePayment(
+			// 		$voucherModel,
+			// 		$this->gatewayType,
+			// 		$this->callbackUrl,
+			// 		null, //$this->walletID
+			// 	);
+
+			// 	//
+			// 	if ($onpResult instanceof \Throwable) {
+			// 		throw $onpResult;
+			// 	}
+
+			// 	//commit
+			// 	if (isset($transaction))
+			// 		$transaction->commit();
+
+			// 	list ($onpUUID, $paymentUrl) = $onpResult;
+			// 	return [
+			// 		'onpkey' => $onpUUID,
+			// 		'paymentUrl' => $paymentUrl,
+			// 	];
+			// }
+
+			//------------------------
+			if ($remainedAmount == 0) {
+				//------------------------
+				$voucherModel->vchStatus = enuVoucherStatus::Settled;
+				$voucherModel->save();
 
 				//commit
 				if (isset($transaction))
 					$transaction->commit();
 
-				return [
-					'onpkey' => $onpUUID,
-					'paymentUrl' => $paymentUrl,
-				];
+				//
+				return $voucherModel->processVoucher();
 			}
+			// else : create online payment out of transaction
 
-			//------------------------
-			// $remainedAmount == 0
-			//------------------------
-			$voucherModel->vchStatus = enuVoucherStatus::Settled;
-			$voucherModel->save();
-
-      //commit
+			//commit
 			if (isset($transaction))
-	      $transaction->commit();
-
-			//
-			return $voucherModel->processVoucher();
+				$transaction->commit();
 
     } catch (\Exception $e) {
 			if (isset($transaction))
@@ -173,6 +185,27 @@ SQL;
 				$transaction->rollBack();
       throw $e;
     }
+
+		if ($remainedAmount > 0) {
+			//create online payment
+			$onpResult = Yii::$app->paymentManager->createOnlinePayment(
+				$voucherModel,
+				$this->gatewayType,
+				$this->callbackUrl,
+				null, //$this->walletID
+			);
+
+			//
+			if ($onpResult instanceof \Throwable) {
+				throw $onpResult;
+			}
+
+			list ($onpUUID, $paymentUrl) = $onpResult;
+			return [
+				'onpkey' => $onpUUID,
+				'paymentUrl' => $paymentUrl,
+			];
+		}
 
   }
 
